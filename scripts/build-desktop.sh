@@ -54,6 +54,22 @@ else
   echo ">>> [1/2] Skipping backend build (--frontend flag set)"
 fi
 
+# ── 1b. Ad-hoc sign the backend binary (macOS only) ─────────────
+# Required on macOS Ventura/Sonoma: unsigned executables inside an app
+# bundle are blocked even after xattr -cr unless they carry a signature.
+if [[ "$(uname)" == "Darwin" ]]; then
+  BIN="$BACKEND/dist/investments-backend/investments-backend"
+  if [ -f "$BIN" ]; then
+    echo ""
+    echo ">>> [1b] Ad-hoc signing backend binary..."
+    chmod +x "$BIN"
+    codesign --force --deep --sign - "$BIN"
+    echo "    Signed: $BIN"
+  else
+    echo "    WARNING: backend binary not found at $BIN — skipping sign step"
+  fi
+fi
+
 # ── 2. Frontend (Electron + Vite) ───────────────────────────────
 echo ""
 echo ">>> [2/2] Building Electron app..."

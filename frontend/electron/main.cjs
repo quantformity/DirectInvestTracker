@@ -223,12 +223,20 @@ app.whenReady().then(() => {
   // Start backend in the background; show a dialog if it fails but keep the app open.
   startBackend().catch((err) => {
     console.error("Backend failed to start:", err.message);
+    const binPath = getBackendBinPath();
+    const detail = [
+      err.message,
+      "",
+      `Binary: ${binPath || "(dev mode — no binary)"}`,
+      `Exists: ${binPath ? require("fs").existsSync(binPath) : "n/a"}`,
+      `Platform: ${process.platform} ${process.arch}`,
+    ].join("\n");
     if (!win.isDestroyed()) {
       dialog.showMessageBox(win, {
         type: "error",
         title: "Backend Error",
         message: "The backend service failed to start.",
-        detail: err.message,
+        detail,
       });
     }
   });
