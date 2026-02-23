@@ -94,9 +94,14 @@ npm install
 npm run electron:dev             # Opens Electron with live reload
 ```
 
-### Option C — Use the packaged app (macOS)
+### Option C — Use the packaged app
 
-Download or build the DMG (see [Building the Desktop App](#building-the-desktop-app)), open it, drag to Applications, and launch. The backend starts automatically.
+Download or build the installer for your platform (see [Building the Desktop App](#building-the-desktop-app)):
+
+| Platform | Installer | Install |
+|----------|-----------|---------|
+| macOS | `.dmg` | Open, drag to Applications, launch |
+| Windows | `.exe` (NSIS) | Run the setup wizard |
 
 ---
 
@@ -104,7 +109,7 @@ Download or build the DMG (see [Building the Desktop App](#building-the-desktop-
 
 ### AI Settings (Ollama)
 
-Open **File → Settings…** (or `Cmd+,`) in the app and set:
+Open **File → Settings…** (or `Cmd+,` / `Ctrl+,`) in the app and set:
 
 | Field | Example | Description |
 |-------|---------|-------------|
@@ -145,6 +150,8 @@ You can change the path in **File → Settings… → Database → Browse…** a
 
 ### First-time setup
 
+**macOS / Linux:**
+
 ```bash
 # Backend venv (required for PyInstaller)
 cd backend
@@ -157,19 +164,39 @@ cd ../frontend
 npm install
 ```
 
-### Full build (backend binary + Electron app)
+**Windows (PowerShell):**
 
-```bash
-./scripts/build-desktop.sh
+```powershell
+# Backend venv (required for PyInstaller)
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt pyinstaller
+
+# Frontend dependencies
+cd ..\frontend
+npm install
 ```
 
-### Frontend only (skip PyInstaller — useful after UI-only changes)
+### macOS / Linux build
 
 ```bash
-./scripts/build-desktop.sh --frontend
+./scripts/build-desktop.sh              # full rebuild
+./scripts/build-desktop.sh --frontend   # skip backend, frontend only
 ```
 
-Build output:
+### Windows build
+
+```powershell
+.\scripts\build-desktop-win.ps1               # full rebuild
+.\scripts\build-desktop-win.ps1 -FrontendOnly # skip backend, frontend only
+```
+
+The Windows build script automatically handles:
+- Copying Conda-provided DLLs (e.g. `sqlite3.dll`) that PyInstaller cannot locate
+- Pre-populating the electron-builder `winCodeSign` cache to avoid a symlink-privilege error
+
+### Build output
 
 | Platform | Output |
 |----------|--------|
@@ -237,7 +264,8 @@ investments/
 │   └── package.json
 │
 ├── scripts/
-│   └── build-desktop.sh         # Full build orchestration script
+│   ├── build-desktop.sh         # Build script for macOS / Linux
+│   └── build-desktop-win.ps1    # Build script for Windows (PowerShell)
 │
 ├── docker-compose.yml
 └── README.md
