@@ -1,33 +1,107 @@
 import { useState, useEffect } from "react";
-import { api, type OllamaSettings } from "../api/client";
+import { api, type OllamaSettings, type AIProvider } from "../api/client";
 
 interface Props {
   onClose: () => void;
 }
 
+const PROVIDERS: { id: AIProvider; label: string; description: string }[] = [
+  { id: "ollama",   label: "Ollama",    description: "Local / self-hosted" },
+  { id: "lmstudio", label: "LM Studio", description: "Local / llama.cpp" },
+  { id: "gemini",   label: "Gemini",    description: "Google AI" },
+  { id: "claude",   label: "Claude",    description: "Anthropic" },
+];
+
+const GEMINI_MODELS = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-thinking-exp",
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
+];
+
+const CLAUDE_MODELS = [
+  "claude-3-5-haiku-20241022",
+  "claude-3-5-sonnet-20241022",
+  "claude-3-7-sonnet-20250219",
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
+];
+
+const EMPTY_SETTINGS: OllamaSettings = {
+  ai_provider: "ollama",
+  ollama_base_url: "",
+  ollama_model: "",
+  ollama_code_model: "",
+  lmstudio_base_url: "http://localhost:1234/v1",
+  lmstudio_model: "",
+  lmstudio_code_model: "",
+  gemini_api_key: "",
+  gemini_model: "gemini-2.0-flash",
+  gemini_code_model: "gemini-2.0-flash",
+  claude_api_key: "",
+  claude_model: "claude-3-5-haiku-20241022",
+  claude_code_model: "claude-3-5-haiku-20241022",
+};
+
+// ── URL helpers ───────────────────────────────────────────────────────────────
+
+function splitUrl(url: string): { host: string; port: string } {
+  try {
+    const u = new URL(url);
+    return { host: `${u.protocol}//${u.hostname}`, port: u.port };
+  } catch {
+    return { host: url, port: "" };
+  }
+}
+
+/** Combine host + port (+ optional fixed suffix) into a full URL. */
+function assembleUrl(host: string, port: string, suffix = ""): string {
+  const h = host.replace(/\/+$/, "");
+  return port ? `${h}:${port}${suffix}` : `${h}${suffix}`;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function OllamaSettingsModal({ onClose }: Props) {
-  const [form, setForm]         = useState<OllamaSettings>({
-    ollama_base_url: "",
-    ollama_model: "",
-    ollama_code_model: "",
-  });
-  const [models, setModels]     = useState<string[]>([]);
+  const [form, setForm]             = useState<OllamaSettings>(EMPTY_SETTINGS);
+  const [localModels, setLocalModels] = useState<string[]>([]);
   const [probeError, setProbeError] = useState<string | null>(null);
-  const [probing, setProbing]   = useState(false);
-  const [saving, setSaving]     = useState(false);
-  const [saved, setSaved]       = useState(false);
-  const [loadError, setLoadError] = useState("");
+  const [probing, setProbing]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [loadError, setLoadError]   = useState("");
+
+  // Split host / port state for local providers
+  const [ollamaHost, setOllamaHost] = useState("http://192.168.0.117");
+  const [ollamaPort, setOllamaPort] = useState("11434");
+  const [lmHost, setLmHost]         = useState("http://localhost");
+  const [lmPort, setLmPort]         = useState("1234");
+
+  const provider = form.ai_provider;
 
   // Database path (Electron only)
   const hasElectron = !!window.electronAPI?.db;
-  const [dbPath, setDbPath]         = useState("");
+  const [dbPath, setDbPath]               = useState("");
   const [pendingDbPath, setPendingDbPath] = useState<string | null>(null);
   const [relaunching, setRelaunching]     = useState(false);
 
-  // Load current settings on mount
   useEffect(() => {
     api.getSettings()
-      .then((s) => setForm(s))
+      .then((s) => {
+        // Parse stored URLs into host + port
+        const ollama = splitUrl(s.ollama_base_url || "http://192.168.0.117:11434");
+        setOllamaHost(ollama.host);
+        setOllamaPort(ollama.port || "11434");
+
+        // LM Studio: strip the /v1 suffix before splitting
+        const lmRaw = (s.lmstudio_base_url || "http://localhost:1234/v1").replace(/\/v1\/?$/, "");
+        const lm = splitUrl(lmRaw);
+        setLmHost(lm.host);
+        setLmPort(lm.port || "1234");
+
+        setForm(s);
+      })
       .catch(() => setLoadError("Could not load settings from backend."));
 
     if (hasElectron) {
@@ -35,19 +109,46 @@ export function OllamaSettingsModal({ onClose }: Props) {
     }
   }, [hasElectron]);
 
+  const clearModels = () => { setLocalModels([]); setProbeError(null); };
+
+  // Keep form.ollama_base_url in sync when host/port fields change
+  const updateOllamaHost = (v: string) => {
+    setOllamaHost(v);
+    setForm((f) => ({ ...f, ollama_base_url: assembleUrl(v, ollamaPort) }));
+    clearModels();
+  };
+  const updateOllamaPort = (v: string) => {
+    setOllamaPort(v);
+    setForm((f) => ({ ...f, ollama_base_url: assembleUrl(ollamaHost, v) }));
+    clearModels();
+  };
+
+  // Keep form.lmstudio_base_url in sync (always appends /v1)
+  const updateLmHost = (v: string) => {
+    setLmHost(v);
+    setForm((f) => ({ ...f, lmstudio_base_url: assembleUrl(v, lmPort, "/v1") }));
+    clearModels();
+  };
+  const updateLmPort = (v: string) => {
+    setLmPort(v);
+    setForm((f) => ({ ...f, lmstudio_base_url: assembleUrl(lmHost, v, "/v1") }));
+    clearModels();
+  };
+
   const handleProbe = async () => {
     setProbing(true);
-    setProbeError(null);
-    setModels([]);
+    clearModels();
     try {
-      const result = await api.getOllamaModels();
+      const result = provider === "lmstudio"
+        ? await api.getLmStudioModels()
+        : await api.getOllamaModels();
       if (result.error) {
         setProbeError(result.error);
       } else {
-        setModels(result.models);
+        setLocalModels(result.models);
       }
     } catch {
-      setProbeError("Request failed — check the URL and try again.");
+      setProbeError("Request failed — check the address and port, then try again.");
     } finally {
       setProbing(false);
     }
@@ -79,42 +180,220 @@ export function OllamaSettingsModal({ onClose }: Props) {
     }
   };
 
-  const modelField = (
+  const isSaveValid = () => {
+    if (provider === "ollama")   return !!(ollamaHost && form.ollama_model && form.ollama_code_model);
+    if (provider === "lmstudio") return !!lmHost;
+    if (provider === "gemini")   return !!(form.gemini_api_key && form.gemini_model && form.gemini_code_model);
+    if (provider === "claude")   return !!(form.claude_api_key && form.claude_model && form.claude_code_model);
+    return false;
+  };
+
+  // ── Shared field renderers ────────────────────────────────────────────────────
+
+  const textField = (
     label: string,
-    key: keyof OllamaSettings,
-    hint: string,
+    value: string,
+    onChange: (v: string) => void,
+    placeholder = "",
+    type: "text" | "password" = "text",
   ) => (
     <div>
       <label className="block text-xs text-gray-400 mb-1">{label}</label>
-      {models.length > 0 ? (
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500"
+      />
+    </div>
+  );
+
+  // Model field — dropdown when models discovered, text otherwise
+  const localModelField = (
+    label: string,
+    value: string,
+    onChange: (v: string) => void,
+    placeholder = "",
+  ) => (
+    <div>
+      <label className="block text-xs text-gray-400 mb-1">{label}</label>
+      {localModels.length > 0 ? (
         <select
-          value={form[key]}
-          onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
           className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-blue-500"
         >
-          {/* Keep current value even if not in list */}
-          {!models.includes(form[key]) && form[key] && (
-            <option value={form[key]}>{form[key]}</option>
+          {!localModels.includes(value) && value && (
+            <option value={value}>{value}</option>
           )}
-          {models.map((m) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
+          {localModels.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       ) : (
         <input
           type="text"
-          value={form[key]}
-          onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-          placeholder={hint}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
           className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500"
         />
       )}
     </div>
   );
 
+  const cloudModelField = (
+    label: string,
+    value: string,
+    onChange: (v: string) => void,
+    knownModels: string[],
+  ) => (
+    <div>
+      <label className="block text-xs text-gray-400 mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-blue-500"
+      >
+        {!knownModels.includes(value) && value && (
+          <option value={value}>{value}</option>
+        )}
+        {knownModels.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+    </div>
+  );
+
+  // ── Host + Port + probe row (for local providers) ─────────────────────────────
+
+  const hostPortRow = (
+    host: string,
+    onHostChange: (v: string) => void,
+    port: string,
+    onPortChange: (v: string) => void,
+    hostPlaceholder: string,
+    portPlaceholder: string,
+    canProbe: boolean,
+  ) => (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        {/* Host / IP */}
+        <div className="flex-1">
+          <label className="block text-xs text-gray-400 mb-1">Host / IP</label>
+          <input
+            type="text"
+            value={host}
+            onChange={(e) => onHostChange(e.target.value)}
+            placeholder={hostPlaceholder}
+            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500"
+          />
+        </div>
+        {/* Port */}
+        <div className="w-24">
+          <label className="block text-xs text-gray-400 mb-1">Port</label>
+          <input
+            type="text"
+            value={port}
+            onChange={(e) => onPortChange(e.target.value)}
+            placeholder={portPlaceholder}
+            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500"
+          />
+        </div>
+      </div>
+      {/* Assembled URL preview + probe button */}
+      <div className="flex items-center gap-2">
+        <p className="flex-1 text-[11px] text-gray-500 font-mono truncate">
+          {provider === "lmstudio"
+            ? assembleUrl(host, port, "/v1")
+            : assembleUrl(host, port)}
+        </p>
+        <button
+          onClick={handleProbe}
+          disabled={probing || !canProbe}
+          className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors whitespace-nowrap border border-gray-600"
+        >
+          {probing ? "…" : "Load Models"}
+        </button>
+      </div>
+      {probeError && <p className="text-red-400 text-xs">{probeError}</p>}
+      {localModels.length > 0 && (
+        <p className="text-green-400 text-xs">✓ {localModels.length} model(s) found — select below</p>
+      )}
+    </div>
+  );
+
+  // ── Provider panels ───────────────────────────────────────────────────────────
+
+  const ollamaPanel = () => (
+    <div className="space-y-3">
+      {hostPortRow(
+        ollamaHost, updateOllamaHost,
+        ollamaPort, updateOllamaPort,
+        "http://192.168.0.117", "11434",
+        !!(ollamaHost),
+      )}
+      {localModelField("Chat Model", form.ollama_model,
+        (v) => setForm((f) => ({ ...f, ollama_model: v })), "glm-4.7-flash:latest")}
+      {localModelField("Code / SQL Model", form.ollama_code_model,
+        (v) => setForm((f) => ({ ...f, ollama_code_model: v })), "qwen3-coder-next:latest")}
+    </div>
+  );
+
+  const lmstudioPanel = () => (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400">
+        Connect to a running LM Studio or llama.cpp server with an OpenAI-compatible API.
+        The <span className="text-gray-300 font-mono">/v1</span> path is added automatically.
+      </p>
+      {hostPortRow(
+        lmHost, updateLmHost,
+        lmPort, updateLmPort,
+        "http://localhost", "1234",
+        !!(lmHost),
+      )}
+      {localModelField("Chat Model", form.lmstudio_model,
+        (v) => setForm((f) => ({ ...f, lmstudio_model: v })), "Leave blank to use loaded model")}
+      {localModelField("Code / SQL Model", form.lmstudio_code_model,
+        (v) => setForm((f) => ({ ...f, lmstudio_code_model: v })), "Leave blank to use loaded model")}
+    </div>
+  );
+
+  const geminiPanel = () => (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400">
+        Get a free API key at{" "}
+        <span className="text-blue-400">aistudio.google.com</span>.
+        Uses Google's OpenAI-compatible endpoint — no extra SDK needed.
+      </p>
+      {textField("API Key", form.gemini_api_key,
+        (v) => setForm((f) => ({ ...f, gemini_api_key: v })), "AIza…", "password")}
+      {cloudModelField("Chat Model", form.gemini_model,
+        (v) => setForm((f) => ({ ...f, gemini_model: v })), GEMINI_MODELS)}
+      {cloudModelField("Code / SQL Model", form.gemini_code_model,
+        (v) => setForm((f) => ({ ...f, gemini_code_model: v })), GEMINI_MODELS)}
+    </div>
+  );
+
+  const claudePanel = () => (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400">
+        Get an API key at{" "}
+        <span className="text-blue-400">console.anthropic.com</span>.
+        Works with any Claude plan that has API access.
+      </p>
+      {textField("API Key", form.claude_api_key,
+        (v) => setForm((f) => ({ ...f, claude_api_key: v })), "sk-ant-…", "password")}
+      {cloudModelField("Chat Model", form.claude_model,
+        (v) => setForm((f) => ({ ...f, claude_model: v })), CLAUDE_MODELS)}
+      {cloudModelField("Code / SQL Model", form.claude_code_model,
+        (v) => setForm((f) => ({ ...f, claude_code_model: v })), CLAUDE_MODELS)}
+    </div>
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
@@ -135,41 +414,37 @@ export function OllamaSettingsModal({ onClose }: Props) {
           </div>
         )}
 
-        <div className="space-y-4">
-          {/* Base URL + probe button */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Ollama Base URL</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={form.ollama_base_url}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, ollama_base_url: e.target.value }));
-                  setModels([]);
-                  setProbeError(null);
-                }}
-                placeholder="http://192.168.0.117:11434"
-                className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500"
-              />
+        {/* Provider tabs */}
+        <div className="mb-4">
+          <label className="block text-xs text-gray-400 mb-2">AI Provider</label>
+          <div className="grid grid-cols-4 gap-1 bg-gray-800 p-1 rounded-lg">
+            {PROVIDERS.map((p) => (
               <button
-                onClick={handleProbe}
-                disabled={probing || !form.ollama_base_url}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors whitespace-nowrap border border-gray-600"
+                key={p.id}
+                onClick={() => {
+                  setForm((f) => ({ ...f, ai_provider: p.id }));
+                  clearModels();
+                }}
+                className={`py-1.5 rounded-md text-xs font-medium transition-colors text-center ${
+                  provider === p.id
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-400 hover:text-white"
+                }`}
               >
-                {probing ? "…" : "Load Models"}
+                <div>{p.label}</div>
+                <div className={`text-[10px] ${provider === p.id ? "text-blue-200" : "text-gray-500"}`}>
+                  {p.description}
+                </div>
               </button>
-            </div>
-            {probeError && (
-              <p className="text-red-400 text-xs mt-1">{probeError}</p>
-            )}
-            {models.length > 0 && (
-              <p className="text-green-400 text-xs mt-1">✓ {models.length} models found — select below</p>
-            )}
+            ))}
           </div>
-
-          {modelField("Chat Model", "ollama_model", "glm-4.7-flash:latest")}
-          {modelField("Code / SQL Model", "ollama_code_model", "qwen3-coder-next:latest")}
         </div>
+
+        {/* Provider-specific fields */}
+        {provider === "ollama"   && ollamaPanel()}
+        {provider === "lmstudio" && lmstudioPanel()}
+        {provider === "gemini"   && geminiPanel()}
+        {provider === "claude"   && claudePanel()}
 
         {/* Database path (Electron packaged app only) */}
         {hasElectron && (
@@ -181,7 +456,6 @@ export function OllamaSettingsModal({ onClose }: Props) {
                 <h3 className="text-white font-semibold text-sm">Database</h3>
               </div>
 
-              {/* Current path */}
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Current database file</label>
                 <p className="text-xs text-gray-300 font-mono bg-gray-800 rounded-lg px-3 py-2 border border-gray-700 break-all">
@@ -189,7 +463,6 @@ export function OllamaSettingsModal({ onClose }: Props) {
                 </p>
               </div>
 
-              {/* New path picker */}
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Change location</label>
                 <div className="flex gap-2">
@@ -236,7 +509,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !form.ollama_base_url || !form.ollama_model || !form.ollama_code_model}
+            disabled={saving || !isSaveValid()}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
           >
             {saved ? "✓ Saved" : saving ? "Saving…" : "Save"}

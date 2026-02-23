@@ -182,7 +182,8 @@ def ai_chat(request: ChatRequest, db: Session = Depends(get_db)):
 
     # ── Text-to-SQL pipeline: generate only, do NOT execute yet ──────────────
     try:
-        raw_sql = ollama.generate_sql_for_question(last_question)
+        sql_messages = [{"role": m.role, "content": m.content} for m in request.messages]
+        raw_sql = ollama.generate_sql_for_question(sql_messages)
 
         sql_block = _extract_code_block(raw_sql, "sql")
         sql = _sanitize_sql(sql_block or raw_sql)

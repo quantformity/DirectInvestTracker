@@ -9,21 +9,43 @@ from app.services import ollama
 
 router = APIRouter()
 
+_SETTING_KEYS = [
+    "ai_provider",
+    "ollama_base_url", "ollama_model", "ollama_code_model",
+    "lmstudio_base_url", "lmstudio_model", "lmstudio_code_model",
+    "gemini_api_key", "gemini_model", "gemini_code_model",
+    "claude_api_key", "claude_model", "claude_code_model",
+]
+
 
 @router.get("/", response_model=OllamaSettingsOut)
 def get_settings(db: Session = Depends(get_db)):
-    """Return current Ollama configuration (DB values override env defaults)."""
+    """Return current AI provider configuration."""
     rows = {r.key: r.value for r in db.query(Setting).all()}
     return OllamaSettingsOut(
+        ai_provider=rows.get("ai_provider", ollama._config["provider"]),
+        # Ollama
         ollama_base_url=rows.get("ollama_base_url", ollama._config["base_url"]),
         ollama_model=rows.get("ollama_model", ollama._config["model"]),
         ollama_code_model=rows.get("ollama_code_model", ollama._config["code_model"]),
+        # LM Studio
+        lmstudio_base_url=rows.get("lmstudio_base_url", ollama._config["lmstudio_base_url"]),
+        lmstudio_model=rows.get("lmstudio_model", ollama._config["lmstudio_model"]),
+        lmstudio_code_model=rows.get("lmstudio_code_model", ollama._config["lmstudio_code_model"]),
+        # Gemini
+        gemini_api_key=rows.get("gemini_api_key", ollama._config["gemini_api_key"]),
+        gemini_model=rows.get("gemini_model", ollama._config["gemini_model"]),
+        gemini_code_model=rows.get("gemini_code_model", ollama._config["gemini_code_model"]),
+        # Claude
+        claude_api_key=rows.get("claude_api_key", ollama._config["claude_api_key"]),
+        claude_model=rows.get("claude_model", ollama._config["claude_model"]),
+        claude_code_model=rows.get("claude_code_model", ollama._config["claude_code_model"]),
     )
 
 
 @router.put("/", response_model=OllamaSettingsOut)
 def update_settings(payload: OllamaSettingsUpdate, db: Session = Depends(get_db)):
-    """Persist Ollama configuration and apply it immediately (no restart needed)."""
+    """Persist AI provider configuration and apply immediately (no restart needed)."""
     data = payload.model_dump()
     for key, value in data.items():
         row = db.query(Setting).filter(Setting.key == key).first()
@@ -33,11 +55,21 @@ def update_settings(payload: OllamaSettingsUpdate, db: Session = Depends(get_db)
             db.add(Setting(key=key, value=value))
     db.commit()
 
-    # Apply immediately to live config
+    # Apply immediately
     ollama.update_config(
+        provider=data["ai_provider"],
         base_url=data["ollama_base_url"],
         model=data["ollama_model"],
         code_model=data["ollama_code_model"],
+        lmstudio_base_url=data["lmstudio_base_url"],
+        lmstudio_model=data["lmstudio_model"],
+        lmstudio_code_model=data["lmstudio_code_model"],
+        gemini_api_key=data["gemini_api_key"],
+        gemini_model=data["gemini_model"],
+        gemini_code_model=data["gemini_code_model"],
+        claude_api_key=data["claude_api_key"],
+        claude_model=data["claude_model"],
+        claude_code_model=data["claude_code_model"],
     )
     return OllamaSettingsOut(**data)
 
@@ -49,6 +81,18 @@ def list_ollama_models():
         resp = requests.get(f"{ollama._config['base_url']}/api/tags", timeout=5)
         resp.raise_for_status()
         models = [m["name"] for m in resp.json().get("models", [])]
+        return {"models": models, "error": None}
+    except Exception as exc:
+        return {"models": [], "error": str(exc)}
+
+
+@router.get("/lmstudio-models")
+def list_lmstudio_models():
+    """Probe the configured LM Studio server and return loaded model IDs."""
+    try:
+        resp = requests.get(f"{ollama._config['lmstudio_base_url'].rstrip('/')}/models", timeout=5)
+        resp.raise_for_status()
+        models = [m["id"] for m in resp.json().get("data", [])]
         return {"models": models, "error": None}
     except Exception as exc:
         return {"models": [], "error": str(exc)}

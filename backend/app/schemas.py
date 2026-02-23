@@ -189,15 +189,45 @@ class ExecuteActionResponse(BaseModel):
     message: str
 
 
-# ─── Ollama Settings ──────────────────────────────────────────────────────────
+# ─── AI Settings ──────────────────────────────────────────────────────────────
 
 class OllamaSettingsOut(BaseModel):
+    # Active provider
+    ai_provider: str = "ollama"
+    # Ollama
     ollama_base_url: str
     ollama_model: str
     ollama_code_model: str
+    # LM Studio
+    lmstudio_base_url: str = "http://localhost:1234/v1"
+    lmstudio_model: str = ""
+    lmstudio_code_model: str = ""
+    # Gemini
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_code_model: str = "gemini-2.0-flash"
+    # Claude
+    claude_api_key: str = ""
+    claude_model: str = "claude-3-5-haiku-20241022"
+    claude_code_model: str = "claude-3-5-haiku-20241022"
 
 
 class OllamaSettingsUpdate(BaseModel):
+    # Active provider
+    ai_provider: str = "ollama"
+    # Ollama
     ollama_base_url: str
     ollama_model: str
     ollama_code_model: str
+    # LM Studio
+    lmstudio_base_url: str = "http://localhost:1234/v1"
+    lmstudio_model: str = ""
+    lmstudio_code_model: str = ""
+    # Gemini
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_code_model: str = "gemini-2.0-flash"
+    # Claude
+    claude_api_key: str = ""
+    claude_model: str = "claude-3-5-haiku-20241022"
+    claude_code_model: str = "claude-3-5-haiku-20241022"

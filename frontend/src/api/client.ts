@@ -131,10 +131,26 @@ export interface ChartResponse {
   data: string;
 }
 
+export type AIProvider = "ollama" | "lmstudio" | "gemini" | "claude";
+
 export interface OllamaSettings {
+  ai_provider: AIProvider;
+  // Ollama
   ollama_base_url: string;
   ollama_model: string;
   ollama_code_model: string;
+  // LM Studio
+  lmstudio_base_url: string;
+  lmstudio_model: string;
+  lmstudio_code_model: string;
+  // Gemini
+  gemini_api_key: string;
+  gemini_model: string;
+  gemini_code_model: string;
+  // Claude
+  claude_api_key: string;
+  claude_model: string;
+  claude_code_model: string;
 }
 
 export interface OllamaModelsResponse {
@@ -198,4 +214,6 @@ export const api = {
     client.put<OllamaSettings>("/settings/", data).then((r) => r.data),
   getOllamaModels: () =>
     client.get<OllamaModelsResponse>("/settings/ollama-models").then((r) => r.data),
+  getLmStudioModels: () =>
+    client.get<OllamaModelsResponse>("/settings/lmstudio-models").then((r) => r.data),
 };

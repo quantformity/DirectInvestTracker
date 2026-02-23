@@ -43,16 +43,26 @@ def _migrate():
 
 
 def _load_settings():
-    """Restore persisted Ollama config from the settings table into the live config dict."""
+    """Restore persisted AI provider config from the settings table into the live config dict."""
     from app.services import ollama
     from app.models import Setting
     try:
         with SessionLocal() as db:
             rows = {r.key: r.value for r in db.query(Setting).all()}
             ollama.update_config(
+                provider=rows.get("ai_provider"),
                 base_url=rows.get("ollama_base_url"),
                 model=rows.get("ollama_model"),
                 code_model=rows.get("ollama_code_model"),
+                lmstudio_base_url=rows.get("lmstudio_base_url"),
+                lmstudio_model=rows.get("lmstudio_model"),
+                lmstudio_code_model=rows.get("lmstudio_code_model"),
+                gemini_api_key=rows.get("gemini_api_key"),
+                gemini_model=rows.get("gemini_model"),
+                gemini_code_model=rows.get("gemini_code_model"),
+                claude_api_key=rows.get("claude_api_key"),
+                claude_model=rows.get("claude_model"),
+                claude_code_model=rows.get("claude_code_model"),
             )
     except Exception:
         pass  # Table may not exist on very first boot; fine to skip
