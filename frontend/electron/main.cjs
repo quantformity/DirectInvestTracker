@@ -88,9 +88,12 @@ function startBackend() {
     const dbDir = path.dirname(dbPath);
     if (dbDir) fs.mkdirSync(dbDir, { recursive: true });
 
+    const logPath = path.join(app.getPath("userData"), "backend.log");
+    const logStream = fs.createWriteStream(logPath, { flags: "w" });
+
     backendProcess = spawn(binPath, [], {
       env: { ...process.env, DATABASE_URL: dbUrl, PORT: "8000" },
-      stdio: "ignore",
+      stdio: ["ignore", logStream, logStream],
     });
 
     backendProcess.on("error", (err) => {
@@ -98,8 +101,14 @@ function startBackend() {
     });
 
     waitForBackend(8000, 60, (err) => {
-      if (err) reject(err);
-      else resolve();
+      if (err) {
+        // Attach log path so the error dialog can show it
+        const e = new Error(err.message);
+        e.logPath = logPath;
+        reject(e);
+      } else {
+        resolve();
+      }
     });
   });
 }
@@ -224,13 +233,24 @@ app.whenReady().then(() => {
   startBackend().catch((err) => {
     console.error("Backend failed to start:", err.message);
     const binPath = getBackendBinPath();
+    const logPath = err.logPath || path.join(app.getPath("userData"), "backend.log");
+    let logTail = "";
+    try {
+      const lines = fs.readFileSync(logPath, "utf8").trim().split("\n");
+      logTail = lines.slice(-30).join("\n");
+    } catch { /* log may not exist */ }
+
     const detail = [
       err.message,
       "",
-      `Binary: ${binPath || "(dev mode — no binary)"}`,
-      `Exists: ${binPath ? require("fs").existsSync(binPath) : "n/a"}`,
+      `Binary: ${binPath || "(dev mode)"}`,
+      `Exists: ${binPath ? fs.existsSync(binPath) : "n/a"}`,
       `Platform: ${process.platform} ${process.arch}`,
+      `Log: ${logPath}`,
+      ...(logTail ? ["", "--- Last 30 lines of backend.log ---", logTail] : []),
     ].join("\n");
+
+    console.error(detail);
     if (!win.isDestroyed()) {
       dialog.showMessageBox(win, {
         type: "error",
