@@ -4,6 +4,9 @@ const fs = require("fs");
 const { spawn } = require("child_process");
 const http = require("http");
 
+// Ensure userData folder uses the product name, not the package "name" field.
+app.setName("Qf Direct Invest Tracker");
+
 const isDev = process.env.NODE_ENV !== "production" && !app.isPackaged;
 
 let backendProcess = null;
@@ -89,12 +92,16 @@ function startBackend() {
     if (dbDir) fs.mkdirSync(dbDir, { recursive: true });
 
     const logPath = path.join(app.getPath("userData"), "backend.log");
-    const logStream = fs.createWriteStream(logPath, { flags: "w" });
+    // Use openSync so the fd is immediately available for spawn.
+    const logFd = fs.openSync(logPath, "w");
 
     backendProcess = spawn(binPath, [], {
       env: { ...process.env, DATABASE_URL: dbUrl, PORT: "8000" },
-      stdio: ["ignore", logStream, logStream],
+      stdio: ["ignore", logFd, logFd],
     });
+
+    // Close our copy of the fd — the child process keeps its own.
+    fs.closeSync(logFd);
 
     backendProcess.on("error", (err) => {
       reject(new Error(`Failed to start backend: ${err.message}`));
