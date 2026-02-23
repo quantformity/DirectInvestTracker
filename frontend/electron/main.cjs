@@ -161,6 +161,13 @@ function createWindow() {
 
   win.once("ready-to-show", () => win.show());
 
+  // Fallback: if the renderer fails to load, show the window anyway so the
+  // error is visible rather than leaving a permanently hidden window.
+  win.webContents.on("did-fail-load", (_e, code, desc) => {
+    console.error(`Renderer failed to load (${code}): ${desc}`);
+    win.show();
+  });
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
