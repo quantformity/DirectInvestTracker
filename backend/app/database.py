@@ -2,10 +2,16 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-# Ensure data directory exists
-os.makedirs("data", exist_ok=True)
-
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/investments.db")
+
+# Ensure the database directory exists.
+# Derive it from DATABASE_URL so it works both in Docker (relative "data/")
+# and in the packaged desktop app (absolute path set by Electron).
+if DATABASE_URL.startswith("sqlite:///"):
+    _db_path = DATABASE_URL[len("sqlite:///"):]
+    _db_dir = os.path.dirname(_db_path)
+    if _db_dir:
+        os.makedirs(_db_dir, exist_ok=True)
 
 engine = create_engine(
     DATABASE_URL,
