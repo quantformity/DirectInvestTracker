@@ -161,17 +161,20 @@ function createWindow() {
 
   win.once("ready-to-show", () => win.show());
 
-  // Fallback: if the renderer fails to load, show the window anyway so the
-  // error is visible rather than leaving a permanently hidden window.
+  // Fallback: show after 5 s even if ready-to-show never fires.
+  setTimeout(() => { if (!win.isDestroyed() && !win.isVisible()) win.show(); }, 5000);
+
   win.webContents.on("did-fail-load", (_e, code, desc) => {
     console.error(`Renderer failed to load (${code}): ${desc}`);
-    win.show();
+    if (!win.isDestroyed()) win.show();
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
   });
+
+  return win;
 }
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
@@ -209,17 +212,26 @@ function registerIpcHandlers() {
 app.whenReady().then(() => {
   registerIpcHandlers();
 
-  startBackend()
-    .then(() => {
-      createWindow();
-      app.on("activate", () => {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  // Create the window immediately — don't wait for the backend.
+  // The frontend handles "backend not ready" gracefully via API error messages.
+  const win = createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  // Start backend in the background; show a dialog if it fails but keep the app open.
+  startBackend().catch((err) => {
+    console.error("Backend failed to start:", err.message);
+    if (!win.isDestroyed()) {
+      dialog.showMessageBox(win, {
+        type: "error",
+        title: "Backend Error",
+        message: "The backend service failed to start.",
+        detail: err.message,
       });
-    })
-    .catch((err) => {
-      console.error("Fatal: could not start backend —", err.message);
-      app.quit();
-    });
+    }
+  });
 });
 
 app.on("before-quit", stopBackend);
