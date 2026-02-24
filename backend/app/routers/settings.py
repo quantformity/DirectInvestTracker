@@ -15,6 +15,7 @@ _SETTING_KEYS = [
     "lmstudio_base_url", "lmstudio_model", "lmstudio_code_model",
     "gemini_api_key", "gemini_model", "gemini_code_model",
     "claude_api_key", "claude_model", "claude_code_model",
+    "llamacpp_base_url", "llamacpp_model", "llamacpp_code_model",
 ]
 
 
@@ -40,6 +41,10 @@ def get_settings(db: Session = Depends(get_db)):
         claude_api_key=rows.get("claude_api_key", ollama._config["claude_api_key"]),
         claude_model=rows.get("claude_model", ollama._config["claude_model"]),
         claude_code_model=rows.get("claude_code_model", ollama._config["claude_code_model"]),
+        # llama.cpp
+        llamacpp_base_url=rows.get("llamacpp_base_url", ollama._config["llamacpp_base_url"]),
+        llamacpp_model=rows.get("llamacpp_model", ollama._config["llamacpp_model"]),
+        llamacpp_code_model=rows.get("llamacpp_code_model", ollama._config["llamacpp_code_model"]),
     )
 
 
@@ -70,6 +75,9 @@ def update_settings(payload: OllamaSettingsUpdate, db: Session = Depends(get_db)
         claude_api_key=data["claude_api_key"],
         claude_model=data["claude_model"],
         claude_code_model=data["claude_code_model"],
+        llamacpp_base_url=data["llamacpp_base_url"],
+        llamacpp_model=data["llamacpp_model"],
+        llamacpp_code_model=data["llamacpp_code_model"],
     )
     return OllamaSettingsOut(**data)
 
@@ -91,6 +99,18 @@ def list_lmstudio_models():
     """Probe the configured LM Studio server and return loaded model IDs."""
     try:
         resp = requests.get(f"{ollama._config['lmstudio_base_url'].rstrip('/')}/models", timeout=5)
+        resp.raise_for_status()
+        models = [m["id"] for m in resp.json().get("data", [])]
+        return {"models": models, "error": None}
+    except Exception as exc:
+        return {"models": [], "error": str(exc)}
+
+
+@router.get("/llamacpp-models")
+def list_llamacpp_models():
+    """Probe the configured llama.cpp server and return loaded model IDs."""
+    try:
+        resp = requests.get(f"{ollama._config['llamacpp_base_url'].rstrip('/')}/models", timeout=5)
         resp.raise_for_status()
         models = [m["id"] for m in resp.json().get("data", [])]
         return {"models": models, "error": None}
