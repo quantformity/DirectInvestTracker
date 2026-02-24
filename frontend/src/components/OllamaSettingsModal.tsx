@@ -46,6 +46,7 @@ const EMPTY_SETTINGS: OllamaSettings = {
   llamacpp_base_url: "http://localhost:8080/v1",
   llamacpp_model: "",
   llamacpp_code_model: "",
+  history_cache_path: "",
 };
 
 // ── URL helpers ───────────────────────────────────────────────────────────────
@@ -545,6 +546,25 @@ export function OllamaSettingsModal({ onClose }: Props) {
             </div>
           </>
         )}
+
+        {/* History Cache path */}
+        <div className="my-5 border-t border-gray-700" />
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-base">📈</span>
+            <h3 className="text-white font-semibold text-sm">History Cache</h3>
+          </div>
+          {textField(
+            "Cache database path (leave blank for default)",
+            form.history_cache_path,
+            (v) => setForm((f) => ({ ...f, history_cache_path: v })),
+            "/path/to/history_cache.db",
+          )}
+          <p className="text-xs text-gray-500">
+            Historical price data is cached locally for instant chart loading. Default location is the same
+            directory as the main database. Changes take effect after saving.
+          </p>
+        </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-3 mt-6">

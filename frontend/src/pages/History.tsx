@@ -19,6 +19,7 @@ export function History() {
   const [points, setPoints]             = useState<HistoryPoint[]>([]);
   const [chartTitle, setChartTitle]     = useState("");
   const [loading, setLoading]           = useState(false);
+  const [refreshing, setRefreshing]     = useState(false);
   const [error, setError]               = useState("");
 
   // Load accounts + positions once
@@ -35,37 +36,57 @@ export function History() {
   }, []);
 
   // Fetch chart data whenever mode / selection changes.
-  // The cleanup function sets `cancelled = true` so that if a slower previous
-  // request resolves after the view has already switched, its response is
-  // discarded rather than overwriting the correct chart data.
+  // Two-phase loading:
+  //   Phase 1 — read from local SQLite cache (fast, shown immediately)
+  //   Phase 2 — fetch live from Yahoo Finance (slow, updates chart + writes cache)
   useEffect(() => {
     let cancelled = false;
+    let hasCachedData = false;
 
     setPoints([]);
     setError("");
-
-    if (mode === "symbol" && !selectedSymbol) return;
-    if (mode === "account" && !selectedAccount) return;
-
     setLoading(true);
+    setRefreshing(false);
 
-    const promise =
-      mode === "portfolio" ? api.getAggregateHistory() :
-      mode === "account"   ? api.getAggregateHistory(selectedAccount) :
-                             api.getHistory(selectedSymbol);
+    if (mode === "symbol" && !selectedSymbol) { setLoading(false); return; }
+    if (mode === "account" && !selectedAccount) { setLoading(false); return; }
 
-    promise
+    const makeCall = (useCache: boolean) =>
+      mode === "portfolio" ? api.getAggregateHistory(undefined, useCache) :
+      mode === "account"   ? api.getAggregateHistory(selectedAccount, useCache) :
+                             api.getHistory(selectedSymbol, undefined, useCache);
+
+    // ── Phase 1: cache (instant) ─────────────────────────────────────────────
+    makeCall(true)
+      .then((hist) => {
+        if (!cancelled && hist.points.length > 0) {
+          hasCachedData = true;
+          setPoints(hist.points);
+          setChartTitle(hist.symbol);
+        }
+      })
+      .catch(() => {}) // cache miss is fine
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    // ── Phase 2: live Yahoo Finance (slow) ───────────────────────────────────
+    setRefreshing(true);
+    makeCall(false)
       .then((hist) => {
         if (!cancelled) {
+          setLoading(false);
           setPoints(hist.points);
           setChartTitle(hist.symbol);
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(e?.response?.data?.detail || "Failed to fetch history");
+        if (!cancelled && !hasCachedData) {
+          setError(e?.response?.data?.detail || "Failed to fetch history");
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setRefreshing(false);
       });
 
     return () => { cancelled = true; };
@@ -170,7 +191,7 @@ export function History() {
           <div className="text-4xl">📅</div>
           <div>No equity positions found. Add some in Position Manager.</div>
         </div>
-      ) : loading ? (
+      ) : (loading || (refreshing && points.length === 0)) ? (
         <div className="flex items-center justify-center h-64 text-gray-500">
           Loading history from Yahoo Finance…
           {(mode === "portfolio" || mode === "account") && (
@@ -179,8 +200,11 @@ export function History() {
         </div>
       ) : (
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
-          <h2 className="text-lg font-semibold text-white mb-4">
-            {chartTitle} — PnL &amp; MTM Since Purchase
+          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-3">
+            <span>{chartTitle} — PnL &amp; MTM Since Purchase</span>
+            {refreshing && (
+              <span className="text-xs font-normal text-blue-400 animate-pulse">Refreshing…</span>
+            )}
           </h2>
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={chartData} margin={{ top: 28, right: 30, left: 20, bottom: 5 }}>
@@ -257,7 +281,7 @@ export function History() {
           )}
 
           <p className="text-xs text-gray-600 mt-2">
-            Historical data fetched on-the-fly from Yahoo Finance · Not stored in database
+            Historical data cached locally · Refreshed from Yahoo Finance on each visit
             {(mode === "portfolio" || mode === "account") && " · MTM/PnL converted to reporting currency using historical FX rates"}
           </p>
         </div>
