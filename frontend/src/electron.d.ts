@@ -12,6 +12,9 @@ interface ElectronAPI {
     onOpenSettings: (cb: () => void) => void;
     removeOpenSettingsListener: (cb: () => void) => void;
   };
+  pdf?: {
+    save: () => Promise<string | null>;
+  };
 }
 
 declare global {

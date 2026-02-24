@@ -14,4 +14,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onOpenSettings: (cb) => ipcRenderer.on("open-settings", cb),
     removeOpenSettingsListener: (cb) => ipcRenderer.removeListener("open-settings", cb),
   },
+
+  pdf: {
+    save: () => ipcRenderer.invoke("pdf:save"),
+  },
 });

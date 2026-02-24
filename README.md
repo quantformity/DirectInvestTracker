@@ -48,6 +48,11 @@ Portfolio PnL and MTM chart since first purchase, with peak/trough annotations a
 
 ![Historical Performance](docs/screenshots/history.png)
 
+### Portfolio Report
+Printable PDF report with period selector (WTD / MTD / QTD / YTD / Full), overview cards, AI analyst narrative, performance chart, pie charts, bar charts, and holdings tables with period-to-date PnL columns.
+
+![Portfolio Report](docs/screenshots/report.png)
+
 ---
 
 ## Architecture

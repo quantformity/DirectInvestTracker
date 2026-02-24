@@ -221,6 +221,29 @@ function registerIpcHandlers() {
     app.relaunch();
     app.quit();
   });
+
+  // Save the current page as a PDF file
+  ipcMain.handle("pdf:save", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return null;
+
+    const defaultName = `YTD-Report-${new Date().toISOString().split("T")[0]}.pdf`;
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: "Save YTD Report as PDF",
+      defaultPath: path.join(app.getPath("documents"), defaultName),
+      filters: [{ name: "PDF Document", extensions: ["pdf"] }],
+    });
+    if (canceled || !filePath) return null;
+
+    const pdfBuffer = await win.webContents.printToPDF({
+      printBackground: true,
+      landscape: false,
+      pageSize: "Letter",
+      margins: { marginType: "custom", top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
+    });
+    fs.writeFileSync(filePath, pdfBuffer);
+    return filePath;
+  });
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────

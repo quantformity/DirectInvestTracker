@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/summary", label: "Summary", icon: "📈" },
   { to: "/market", label: "Market Insights", icon: "💹" },
   { to: "/history", label: "History", icon: "📅" },
+  { to: "/report", label: "Report", icon: "📄" },
 ];
 
 const CHART_KEYWORDS  = /\b(plot|chart|graph|show me|visuali[sz]e|draw)\b/i;
