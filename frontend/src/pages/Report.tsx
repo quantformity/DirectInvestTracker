@@ -465,7 +465,7 @@ export function Report() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Portfolio Report</h1>
               <p className="text-gray-500 mt-1">{periodLabel}: {dateRange}</p>
-              <p className="text-gray-400 text-xs mt-0.5">Generated on {TODAY}</p>
+              <p className="text-gray-400 text-xs mt-0.5">Generated on {TODAY} · v{__APP_VERSION__}</p>
             </div>
             <img
               src="/QuantformityIcon.png"

@@ -207,6 +207,7 @@ export function Layout() {
             <div className="text-white text-xs font-semibold text-center leading-tight">
               Direct Invest Tracker
             </div>
+            <div className="text-gray-500 text-[10px]">v{__APP_VERSION__}</div>
           </div>
         </div>
 

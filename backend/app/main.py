@@ -1,4 +1,5 @@
 import os
+import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +7,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db
 from app.services.scheduler import start_scheduler, shutdown_scheduler
 from app.routers import accounts, positions, market_data, fx_rates, summary, history, ai, settings
+
+
+def _read_version() -> str:
+    """Read version from the repo-root VERSION file.
+
+    Works both in development (walk up from app/) and when packaged with
+    PyInstaller (VERSION is bundled next to the binary via backend.spec).
+    """
+    # PyInstaller sets sys._MEIPASS when running from a bundle
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(sys.executable)
+        candidate = os.path.join(base, "VERSION")
+        if os.path.isfile(candidate):
+            return open(candidate).read().strip()
+
+    # Development: walk up from this file's directory to find VERSION
+    here = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(5):
+        candidate = os.path.join(here, "VERSION")
+        if os.path.isfile(candidate):
+            return open(candidate).read().strip()
+        here = os.path.dirname(here)
+
+    return "0.0.0"
 
 
 @asynccontextmanager
@@ -19,7 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Qf Direct Invest Tracker API",
     description="Backend for the Qf Direct Invest Tracker portfolio tracker",
-    version="1.0.0",
+    version=_read_version(),
     lifespan=lifespan,
 )
 
