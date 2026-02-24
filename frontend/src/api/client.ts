@@ -157,6 +157,9 @@ export interface OllamaSettings {
   llamacpp_code_model: string;
   // History cache
   history_cache_path: string;
+  history_cache_path_resolved?: string;  // actual path in use (read-only from backend)
+  // Database (read-only from backend)
+  db_path?: string;  // actual database file path the backend is using
 }
 
 export interface OllamaModelsResponse {

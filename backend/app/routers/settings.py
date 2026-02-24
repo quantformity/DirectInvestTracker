@@ -1,11 +1,21 @@
+import os
 import requests
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, DATABASE_URL
 from app.models import Setting
 from app.schemas import OllamaSettingsOut, OllamaSettingsUpdate
 from app.services import ollama
+from app.services import history_cache
+
+
+def _resolve_db_path(url: str) -> str:
+    """Return the absolute filesystem path for a sqlite:/// DATABASE_URL."""
+    if url.startswith("sqlite:///"):
+        raw = url[len("sqlite:///"):]
+        return os.path.abspath(raw)
+    return url
 
 router = APIRouter()
 
@@ -48,6 +58,9 @@ def get_settings(db: Session = Depends(get_db)):
         llamacpp_code_model=rows.get("llamacpp_code_model", ollama._config["llamacpp_code_model"]),
         # History cache
         history_cache_path=rows.get("history_cache_path", ""),
+        history_cache_path_resolved=history_cache.get_cache_path(),
+        # Database (read-only)
+        db_path=_resolve_db_path(DATABASE_URL),
     )
 
 
@@ -82,7 +95,11 @@ def update_settings(payload: OllamaSettingsUpdate, db: Session = Depends(get_db)
         llamacpp_model=data["llamacpp_model"],
         llamacpp_code_model=data["llamacpp_code_model"],
     )
-    return OllamaSettingsOut(**data)
+    return OllamaSettingsOut(
+        **data,
+        history_cache_path_resolved=history_cache.get_cache_path(),
+        db_path=_resolve_db_path(DATABASE_URL),
+    )
 
 
 @router.get("/ollama-models")

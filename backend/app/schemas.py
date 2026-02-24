@@ -235,6 +235,9 @@ class OllamaSettingsOut(BaseModel):
     llamacpp_code_model: str = ""
     # History cache
     history_cache_path: str = ""
+    history_cache_path_resolved: str = ""  # actual path in use (read-only, not persisted)
+    # Database (read-only, not persisted)
+    db_path: str = ""  # actual database file path the backend is using
 
 
 class OllamaSettingsUpdate(BaseModel):

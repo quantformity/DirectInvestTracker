@@ -78,12 +78,12 @@ export function OllamaSettingsModal({ onClose }: Props) {
   const [loadError, setLoadError]   = useState("");
 
   // Split host / port state for local providers
-  const [ollamaHost, setOllamaHost] = useState("http://192.168.0.117");
-  const [ollamaPort, setOllamaPort] = useState("11434");
-  const [lmHost, setLmHost]         = useState("http://localhost");
-  const [lmPort, setLmPort]         = useState("1234");
-  const [llamacppHost, setLlamacppHost] = useState("http://localhost");
-  const [llamacppPort, setLlamacppPort] = useState("8080");
+  const [ollamaHost, setOllamaHost] = useState("");
+  const [ollamaPort, setOllamaPort] = useState("");
+  const [lmHost, setLmHost]         = useState("");
+  const [lmPort, setLmPort]         = useState("");
+  const [llamacppHost, setLlamacppHost] = useState("");
+  const [llamacppPort, setLlamacppPort] = useState("");
 
   const provider = form.ai_provider;
 
@@ -96,22 +96,22 @@ export function OllamaSettingsModal({ onClose }: Props) {
   useEffect(() => {
     api.getSettings()
       .then((s) => {
-        // Parse stored URLs into host + port
-        const ollama = splitUrl(s.ollama_base_url || "http://192.168.0.117:11434");
-        setOllamaHost(ollama.host);
-        setOllamaPort(ollama.port || "11434");
+        // Parse stored URLs into host + port (no hardcoded fallbacks — use only what backend returns)
+        const ollamaU = splitUrl(s.ollama_base_url);
+        setOllamaHost(ollamaU.host);
+        setOllamaPort(ollamaU.port);
 
         // LM Studio: strip the /v1 suffix before splitting
-        const lmRaw = (s.lmstudio_base_url || "http://localhost:1234/v1").replace(/\/v1\/?$/, "");
-        const lm = splitUrl(lmRaw);
-        setLmHost(lm.host);
-        setLmPort(lm.port || "1234");
+        const lmRaw = s.lmstudio_base_url.replace(/\/v1\/?$/, "");
+        const lmU = splitUrl(lmRaw);
+        setLmHost(lmU.host);
+        setLmPort(lmU.port);
 
         // llama.cpp: strip the /v1 suffix before splitting
-        const llamacppRaw = (s.llamacpp_base_url || "http://localhost:8080/v1").replace(/\/v1\/?$/, "");
-        const llamacpp = splitUrl(llamacppRaw);
-        setLlamacppHost(llamacpp.host);
-        setLlamacppPort(llamacpp.port || "8080");
+        const llamacppRaw = s.llamacpp_base_url.replace(/\/v1\/?$/, "");
+        const llamacppU = splitUrl(llamacppRaw);
+        setLlamacppHost(llamacppU.host);
+        setLlamacppPort(llamacppU.port);
 
         setForm(s);
       })
@@ -507,7 +507,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Current database file</label>
                 <p className="text-xs text-gray-300 font-mono bg-gray-800 rounded-lg px-3 py-2 border border-gray-700 break-all">
-                  {dbPath || "Loading…"}
+                  {form.db_path || dbPath || "Loading…"}
                 </p>
               </div>
 
@@ -530,7 +530,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
                 </div>
               </div>
 
-              {pendingDbPath && pendingDbPath !== dbPath && (
+              {pendingDbPath && pendingDbPath !== (form.db_path || dbPath) && (
                 <button
                   onClick={handleApplyDb}
                   disabled={relaunching}
@@ -559,6 +559,11 @@ export function OllamaSettingsModal({ onClose }: Props) {
             form.history_cache_path,
             (v) => setForm((f) => ({ ...f, history_cache_path: v })),
             "/path/to/history_cache.db",
+          )}
+          {form.history_cache_path_resolved && (
+            <p className="text-[11px] text-gray-500 font-mono bg-gray-800 rounded px-2 py-1 break-all">
+              Currently using: {form.history_cache_path_resolved}
+            </p>
           )}
           <p className="text-xs text-gray-500">
             Historical price data is cached locally for instant chart loading. Default location is the same
