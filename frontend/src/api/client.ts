@@ -155,6 +155,8 @@ export interface OllamaSettings {
   llamacpp_base_url: string;
   llamacpp_model: string;
   llamacpp_code_model: string;
+  // History cache
+  history_cache_path: string;
 }
 
 export interface OllamaModelsResponse {
@@ -194,10 +196,16 @@ export const api = {
     client.get<SummaryOut>("/summary/", { params: { group_by } }).then((r) => r.data),
 
   // History
-  getHistory: (symbol: string, account_id?: number) =>
-    client.get<HistoryOut>("/history/", { params: { symbol, account_id } }).then((r) => r.data),
-  getAggregateHistory: (account_id?: number) =>
-    client.get<HistoryOut>("/history/aggregate", { params: account_id != null ? { account_id } : {} }).then((r) => r.data),
+  getHistory: (symbol: string, account_id?: number, useCache?: boolean) =>
+    client.get<HistoryOut>("/history/", {
+      params: { symbol, ...(account_id != null ? { account_id } : {}), ...(useCache ? { use_cache: true } : {}) },
+    }).then((r) => r.data),
+  getAggregateHistory: (account_id?: number, useCache?: boolean) => {
+    const params: Record<string, unknown> = {};
+    if (account_id != null) params.account_id = account_id;
+    if (useCache) params.use_cache = true;
+    return client.get<HistoryOut>("/history/aggregate", { params }).then((r) => r.data);
+  },
 
   // AI  (use aiClient — long timeout for LLM inference)
   chat: (messages: ChatMessage[]) =>

@@ -214,6 +214,8 @@ class OllamaSettingsOut(BaseModel):
     llamacpp_base_url: str = "http://localhost:8080/v1"
     llamacpp_model: str = ""
     llamacpp_code_model: str = ""
+    # History cache
+    history_cache_path: str = ""
 
 
 class OllamaSettingsUpdate(BaseModel):
@@ -239,3 +241,5 @@ class OllamaSettingsUpdate(BaseModel):
     llamacpp_base_url: str = "http://localhost:8080/v1"
     llamacpp_model: str = ""
     llamacpp_code_model: str = ""
+    # History cache
+    history_cache_path: str = ""

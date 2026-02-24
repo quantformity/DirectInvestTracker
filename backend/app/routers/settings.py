@@ -16,6 +16,7 @@ _SETTING_KEYS = [
     "gemini_api_key", "gemini_model", "gemini_code_model",
     "claude_api_key", "claude_model", "claude_code_model",
     "llamacpp_base_url", "llamacpp_model", "llamacpp_code_model",
+    "history_cache_path",
 ]
 
 
@@ -45,6 +46,8 @@ def get_settings(db: Session = Depends(get_db)):
         llamacpp_base_url=rows.get("llamacpp_base_url", ollama._config["llamacpp_base_url"]),
         llamacpp_model=rows.get("llamacpp_model", ollama._config["llamacpp_model"]),
         llamacpp_code_model=rows.get("llamacpp_code_model", ollama._config["llamacpp_code_model"]),
+        # History cache
+        history_cache_path=rows.get("history_cache_path", ""),
     )
 
 
