@@ -210,6 +210,10 @@ class OllamaSettingsOut(BaseModel):
     claude_api_key: str = ""
     claude_model: str = "claude-3-5-haiku-20241022"
     claude_code_model: str = "claude-3-5-haiku-20241022"
+    # llama.cpp server
+    llamacpp_base_url: str = "http://localhost:8080/v1"
+    llamacpp_model: str = ""
+    llamacpp_code_model: str = ""
 
 
 class OllamaSettingsUpdate(BaseModel):
@@ -231,3 +235,7 @@ class OllamaSettingsUpdate(BaseModel):
     claude_api_key: str = ""
     claude_model: str = "claude-3-5-haiku-20241022"
     claude_code_model: str = "claude-3-5-haiku-20241022"
+    # llama.cpp server
+    llamacpp_base_url: str = "http://localhost:8080/v1"
+    llamacpp_model: str = ""
+    llamacpp_code_model: str = ""

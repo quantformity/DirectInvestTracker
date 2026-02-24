@@ -7,7 +7,8 @@ interface Props {
 
 const PROVIDERS: { id: AIProvider; label: string; description: string }[] = [
   { id: "ollama",   label: "Ollama",    description: "Local / self-hosted" },
-  { id: "lmstudio", label: "LM Studio", description: "Local / llama.cpp" },
+  { id: "lmstudio", label: "LM Studio", description: "OpenAI-compatible" },
+  { id: "llamacpp", label: "llama.cpp", description: "Local server" },
   { id: "gemini",   label: "Gemini",    description: "Google AI" },
   { id: "claude",   label: "Claude",    description: "Anthropic" },
 ];
@@ -42,6 +43,9 @@ const EMPTY_SETTINGS: OllamaSettings = {
   claude_api_key: "",
   claude_model: "claude-3-5-haiku-20241022",
   claude_code_model: "claude-3-5-haiku-20241022",
+  llamacpp_base_url: "http://localhost:8080/v1",
+  llamacpp_model: "",
+  llamacpp_code_model: "",
 };
 
 // ── URL helpers ───────────────────────────────────────────────────────────────
@@ -77,6 +81,8 @@ export function OllamaSettingsModal({ onClose }: Props) {
   const [ollamaPort, setOllamaPort] = useState("11434");
   const [lmHost, setLmHost]         = useState("http://localhost");
   const [lmPort, setLmPort]         = useState("1234");
+  const [llamacppHost, setLlamacppHost] = useState("http://localhost");
+  const [llamacppPort, setLlamacppPort] = useState("8080");
 
   const provider = form.ai_provider;
 
@@ -99,6 +105,12 @@ export function OllamaSettingsModal({ onClose }: Props) {
         const lm = splitUrl(lmRaw);
         setLmHost(lm.host);
         setLmPort(lm.port || "1234");
+
+        // llama.cpp: strip the /v1 suffix before splitting
+        const llamacppRaw = (s.llamacpp_base_url || "http://localhost:8080/v1").replace(/\/v1\/?$/, "");
+        const llamacpp = splitUrl(llamacppRaw);
+        setLlamacppHost(llamacpp.host);
+        setLlamacppPort(llamacpp.port || "8080");
 
         setForm(s);
       })
@@ -135,13 +147,27 @@ export function OllamaSettingsModal({ onClose }: Props) {
     clearModels();
   };
 
+  // Keep form.llamacpp_base_url in sync (always appends /v1)
+  const updateLlamacppHost = (v: string) => {
+    setLlamacppHost(v);
+    setForm((f) => ({ ...f, llamacpp_base_url: assembleUrl(v, llamacppPort, "/v1") }));
+    clearModels();
+  };
+  const updateLlamacppPort = (v: string) => {
+    setLlamacppPort(v);
+    setForm((f) => ({ ...f, llamacpp_base_url: assembleUrl(llamacppHost, v, "/v1") }));
+    clearModels();
+  };
+
   const handleProbe = async () => {
     setProbing(true);
     clearModels();
     try {
-      const result = provider === "lmstudio"
-        ? await api.getLmStudioModels()
-        : await api.getOllamaModels();
+      const result = provider === "llamacpp"
+        ? await api.getLlamaCppModels()
+        : provider === "lmstudio"
+          ? await api.getLmStudioModels()
+          : await api.getOllamaModels();
       if (result.error) {
         setProbeError(result.error);
       } else {
@@ -183,6 +209,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
   const isSaveValid = () => {
     if (provider === "ollama")   return !!(ollamaHost && form.ollama_model && form.ollama_code_model);
     if (provider === "lmstudio") return !!lmHost;
+    if (provider === "llamacpp") return !!llamacppHost;
     if (provider === "gemini")   return !!(form.gemini_api_key && form.gemini_model && form.gemini_code_model);
     if (provider === "claude")   return !!(form.claude_api_key && form.claude_model && form.claude_code_model);
     return false;
@@ -301,7 +328,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
       {/* Assembled URL preview + probe button */}
       <div className="flex items-center gap-2">
         <p className="flex-1 text-[11px] text-gray-500 font-mono truncate">
-          {provider === "lmstudio"
+          {(provider === "lmstudio" || provider === "llamacpp")
             ? assembleUrl(host, port, "/v1")
             : assembleUrl(host, port)}
         </p>
@@ -340,7 +367,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
   const lmstudioPanel = () => (
     <div className="space-y-3">
       <p className="text-xs text-gray-400">
-        Connect to a running LM Studio or llama.cpp server with an OpenAI-compatible API.
+        Connect to a running LM Studio server with an OpenAI-compatible API.
         The <span className="text-gray-300 font-mono">/v1</span> path is added automatically.
       </p>
       {hostPortRow(
@@ -353,6 +380,25 @@ export function OllamaSettingsModal({ onClose }: Props) {
         (v) => setForm((f) => ({ ...f, lmstudio_model: v })), "Leave blank to use loaded model")}
       {localModelField("Code / SQL Model", form.lmstudio_code_model,
         (v) => setForm((f) => ({ ...f, lmstudio_code_model: v })), "Leave blank to use loaded model")}
+    </div>
+  );
+
+  const llamacppPanel = () => (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400">
+        Connect to a running llama.cpp server (<code className="text-gray-300">llama-server</code>).
+        The <span className="text-gray-300 font-mono">/v1</span> path is added automatically.
+      </p>
+      {hostPortRow(
+        llamacppHost, updateLlamacppHost,
+        llamacppPort, updateLlamacppPort,
+        "http://localhost", "8080",
+        !!(llamacppHost),
+      )}
+      {localModelField("Chat Model", form.llamacpp_model,
+        (v) => setForm((f) => ({ ...f, llamacpp_model: v })), "Leave blank to use loaded model")}
+      {localModelField("Code / SQL Model", form.llamacpp_code_model,
+        (v) => setForm((f) => ({ ...f, llamacpp_code_model: v })), "Leave blank to use loaded model")}
     </div>
   );
 
@@ -417,7 +463,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
         {/* Provider tabs */}
         <div className="mb-4">
           <label className="block text-xs text-gray-400 mb-2">AI Provider</label>
-          <div className="grid grid-cols-4 gap-1 bg-gray-800 p-1 rounded-lg">
+          <div className="grid grid-cols-5 gap-1 bg-gray-800 p-1 rounded-lg">
             {PROVIDERS.map((p) => (
               <button
                 key={p.id}
@@ -443,6 +489,7 @@ export function OllamaSettingsModal({ onClose }: Props) {
         {/* Provider-specific fields */}
         {provider === "ollama"   && ollamaPanel()}
         {provider === "lmstudio" && lmstudioPanel()}
+        {provider === "llamacpp" && llamacppPanel()}
         {provider === "gemini"   && geminiPanel()}
         {provider === "claude"   && claudePanel()}
 
