@@ -23,9 +23,30 @@ Built with a **Python/FastAPI** backend and an **Electron/React** frontend. Runs
 
 ## Screenshots
 
-| Position Manager | Market Insights | AI Chat |
-|:-:|:-:|:-:|
-| _(Add positions with account, symbol, currency, quantity, cost)_ | _(Total MTM/PnL stat cards + bar charts by symbol)_ | _(Natural language queries and action confirmation)_ |
+### Position Manager
+Add and manage positions across accounts, currencies, and categories (Equity, GIC, Cash).
+
+![Position Manager](docs/screenshots/position-manager.png)
+
+### Position List
+Full portfolio view with real-time spot prices, MTM, and PnL in reporting currency.
+
+![Position List](docs/screenshots/position-list.png)
+
+### Portfolio Summary
+Donut charts and tables breaking down MTM/PnL by category and by account.
+
+![Portfolio Summary](docs/screenshots/summary.png)
+
+### Market Insights
+Live stat cards (Total MTM, PnL, Today's PnL, Cash, GIC) and per-symbol bar charts.
+
+![Market Insights](docs/screenshots/market-insights.png)
+
+### Historical Performance
+Portfolio PnL and MTM chart since first purchase, with peak/trough annotations and two-phase cache loading.
+
+![Historical Performance](docs/screenshots/history.png)
 
 ---
 
