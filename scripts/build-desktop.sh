@@ -81,6 +81,11 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
+# Sync version from repo-root VERSION file into package.json
+APP_VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+echo "    Syncing version $APP_VERSION into package.json..."
+npm pkg set version="$APP_VERSION"
+
 npm run electron:build
 
 echo ""

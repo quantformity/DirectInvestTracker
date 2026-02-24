@@ -165,6 +165,12 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
     }
 
+    # Sync version from repo-root VERSION file into package.json
+    $AppVersion = (Get-Content "$Root\VERSION").Trim()
+    Write-Host "    Syncing version $AppVersion into package.json..."
+    npm pkg set version="$AppVersion"
+    if ($LASTEXITCODE -ne 0) { throw "npm pkg set version failed" }
+
     # Disable auto code-signing discovery (no certificate needed for local builds)
     $env:CSC_IDENTITY_AUTO_DISCOVERY = "false"
 

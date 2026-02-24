@@ -6,7 +6,11 @@
 
 from PyInstaller.utils.hooks import collect_all
 
-datas = []
+import os as _os
+datas = [
+    # Bundle the repo-root VERSION file so the packaged binary can read it
+    (_os.path.join(_os.path.dirname(SPECPATH), "VERSION"), "."),
+]
 binaries = []
 hiddenimports = []
 
