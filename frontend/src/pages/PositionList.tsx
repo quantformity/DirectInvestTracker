@@ -20,11 +20,11 @@ const columns = [
   }),
   columnHelper.accessor("quantity", { header: "Qty", cell: (i) => fmt(i.getValue(), 0) }),
   columnHelper.accessor("cost_per_share", {
-    header: (h) => `Cost (${h.table.getRowModel().rows[0]?.original.stock_currency ?? "—"})`,
+    header: "Cost",
     cell: (i) => fmt(i.getValue()),
   }),
   columnHelper.accessor("spot_price", {
-    header: (h) => `Spot (${h.table.getRowModel().rows[0]?.original.stock_currency ?? "—"})`,
+    header: "Spot",
     cell: (i) => i.getValue() != null ? fmt(i.getValue()!) : <span className="text-gray-500">—</span>,
   }),
   columnHelper.accessor("mtm_account", { header: "MTM (Acct)", cell: (i) => fmt(i.getValue()) }),
