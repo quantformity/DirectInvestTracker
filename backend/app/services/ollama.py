@@ -33,6 +33,11 @@ _config: dict[str, str] = {
     "claude_api_key":      os.getenv("CLAUDE_API_KEY",        ""),
     "claude_model":        os.getenv("CLAUDE_MODEL",          "claude-3-5-haiku-20241022"),
     "claude_code_model":   os.getenv("CLAUDE_CODE_MODEL",     "claude-3-5-haiku-20241022"),
+
+    # llama.cpp server (OpenAI-compatible)
+    "llamacpp_base_url":   os.getenv("LLAMACPP_BASE_URL",     "http://localhost:8080/v1"),
+    "llamacpp_model":      os.getenv("LLAMACPP_MODEL",        ""),
+    "llamacpp_code_model": os.getenv("LLAMACPP_CODE_MODEL",   ""),
 }
 
 
@@ -48,6 +53,9 @@ def _sync_active_models() -> None:
     elif provider == "claude":
         _config["model"]      = _config["claude_model"]
         _config["code_model"] = _config["claude_code_model"]
+    elif provider == "llamacpp":
+        _config["model"]      = _config["llamacpp_model"] or "local-model"
+        _config["code_model"] = _config["llamacpp_code_model"] or _config["llamacpp_model"] or "local-model"
     # ollama: model/code_model are already set correctly
 
 
@@ -65,6 +73,9 @@ def update_config(
     claude_api_key: Optional[str] = None,
     claude_model: Optional[str] = None,
     claude_code_model: Optional[str] = None,
+    llamacpp_base_url: Optional[str] = None,
+    llamacpp_model: Optional[str] = None,
+    llamacpp_code_model: Optional[str] = None,
 ) -> None:
     """Update the live AI configuration (call from settings router or init_db)."""
     updates = {
@@ -81,6 +92,9 @@ def update_config(
         "claude_api_key":      claude_api_key,
         "claude_model":        claude_model,
         "claude_code_model":   claude_code_model,
+        "llamacpp_base_url":   llamacpp_base_url,
+        "llamacpp_model":      llamacpp_model,
+        "llamacpp_code_model": llamacpp_code_model,
     }
     for key, value in updates.items():
         if value is not None:
@@ -211,6 +225,9 @@ def chat(
 
     elif provider == "claude":
         return _chat_claude(full_messages, m, _config["claude_api_key"])
+
+    elif provider == "llamacpp":
+        return _chat_openai_compat(full_messages, m, _config["llamacpp_base_url"])
 
     else:
         return f"Error: Unknown AI provider '{provider}'. Please check AI Settings."

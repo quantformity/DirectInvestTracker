@@ -131,7 +131,7 @@ export interface ChartResponse {
   data: string;
 }
 
-export type AIProvider = "ollama" | "lmstudio" | "gemini" | "claude";
+export type AIProvider = "ollama" | "lmstudio" | "gemini" | "claude" | "llamacpp";
 
 export interface OllamaSettings {
   ai_provider: AIProvider;
@@ -151,6 +151,10 @@ export interface OllamaSettings {
   claude_api_key: string;
   claude_model: string;
   claude_code_model: string;
+  // llama.cpp
+  llamacpp_base_url: string;
+  llamacpp_model: string;
+  llamacpp_code_model: string;
 }
 
 export interface OllamaModelsResponse {
@@ -216,4 +220,6 @@ export const api = {
     client.get<OllamaModelsResponse>("/settings/ollama-models").then((r) => r.data),
   getLmStudioModels: () =>
     client.get<OllamaModelsResponse>("/settings/lmstudio-models").then((r) => r.data),
+  getLlamaCppModels: () =>
+    client.get<OllamaModelsResponse>("/settings/llamacpp-models").then((r) => r.data),
 };
