@@ -1,6 +1,7 @@
 import os
 import time
 from collections import defaultdict
+from datetime import date as date_type
 from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -11,10 +12,11 @@ from app.database import get_db
 from app.models import Position, Account, CategoryEnum, FxRate
 from app.schemas import HistoryOut, HistoryPoint
 from app.services.yahoo_finance import fetch_history
+from app.services import history_cache
 
 router = APIRouter()
 
-_HISTORY_DELAY = 0.3  # seconds between symbol fetches in aggregate
+_HISTORY_DELAY = 0.3  # seconds between Yahoo Finance fetches (rate-limit)
 
 
 def _get_fx_rates(db: Session) -> dict[str, float]:
@@ -42,15 +44,37 @@ def _lookup_fx(fx_rates: dict, from_ccy: str, to_ccy: str) -> float:
     return 1.0
 
 
+def _fetch_or_cache(cache_key: str, start_date: date_type, use_cache: bool) -> pd.DataFrame:
+    """Return price history for *cache_key* from *start_date* onwards.
+
+    When *use_cache* is True: read only from the local SQLite cache; never
+    calls Yahoo Finance.  Returns an empty DataFrame on a cache miss.
+
+    When *use_cache* is False: fetch live data from Yahoo Finance, write the
+    result to the cache, then return it.
+    """
+    if use_cache:
+        return history_cache.read_cache(cache_key, start_date)
+    df = fetch_history(cache_key, start_date=start_date)
+    if not df.empty:
+        history_cache.write_cache(cache_key, df)
+    return df
+
+
 @router.get("/aggregate", response_model=HistoryOut)
 def get_aggregate_history(
     account_id: Optional[int] = Query(default=None),
+    use_cache: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     """
     Aggregate historical PnL/MTM across all equity positions,
     optionally filtered to a single account. Values in reporting currency.
     Per-date historical FX rates are used where available.
+
+    When ``use_cache=true`` the response is served from the local SQLite
+    cache (fast).  When ``use_cache=false`` (default) data is fetched live
+    from Yahoo Finance and the cache is updated.
     """
     reporting_currency = os.getenv("REPORTING_CURRENCY", "CAD").upper()
 
@@ -62,7 +86,7 @@ def get_aggregate_history(
         raise HTTPException(status_code=404, detail="No equity positions found")
 
     accounts = {a.id: a for a in db.query(Account).all()}
-    latest_fx = _get_fx_rates(db)  # fallback when historical FX unavailable
+    latest_fx = _get_fx_rates(db)
 
     # Group positions by symbol
     sym_groups: dict[str, list[Position]] = defaultdict(list)
@@ -84,13 +108,13 @@ def get_aggregate_history(
     # hist_fx["USD/CAD"] = {date: rate, ...}
     hist_fx: dict[str, dict] = {}
     for from_ccy, to_ccy in fx_pairs_needed:
-        time.sleep(_HISTORY_DELAY)
-        fx_df = fetch_history(f"{from_ccy}{to_ccy}=X", start_date=overall_earliest)
+        if not use_cache:
+            time.sleep(_HISTORY_DELAY)
+        fx_df = _fetch_or_cache(f"{from_ccy}{to_ccy}=X", overall_earliest, use_cache)
         if not fx_df.empty:
             hist_fx[f"{from_ccy}/{to_ccy}"] = dict(zip(fx_df.index, fx_df["Close"]))
 
     def _fx_on_date(from_ccy: str, to_ccy: str, dt) -> float:
-        """Return the FX rate for a specific date; falls back to the latest DB rate."""
         if from_ccy == to_ccy:
             return 1.0
         key, inv = f"{from_ccy}/{to_ccy}", f"{to_ccy}/{from_ccy}"
@@ -104,26 +128,28 @@ def get_aggregate_history(
                 return 1.0 / float(rate)
         return _lookup_fx(latest_fx, from_ccy, to_ccy)
 
-    # ── Fetch all symbol DataFrames first ─────────────────────────────────────
-    # We need all DFs up-front so we can build the union of trading dates and
-    # reindex each symbol to it — preventing drops when exchanges have different
-    # holiday calendars (e.g. TSX closed on Victoria Day, NYSE open).
+    # ── Fetch all symbol DataFrames ───────────────────────────────────────────
     sym_dfs: dict[str, tuple[pd.DataFrame, list[Position]]] = {}
     for i, (symbol, sym_positions) in enumerate(sym_groups.items()):
-        if i > 0:
+        if not use_cache and i > 0:
             time.sleep(_HISTORY_DELAY)
         earliest = min(p.date_added for p in sym_positions)
-        df = fetch_history(symbol, start_date=earliest)
+        df = _fetch_or_cache(symbol, earliest, use_cache)
         if not df.empty:
             sym_dfs[symbol] = (df, sym_positions)
 
     if not sym_dfs:
+        if use_cache:
+            label = "Portfolio" if account_id is None else (
+                accounts[account_id].name if account_id in accounts else f"Account {account_id}"
+            )
+            return HistoryOut(symbol=label, account_id=account_id, points=[])
         raise HTTPException(status_code=503, detail="Could not fetch historical data")
 
     # Build union of every date any symbol has a price for
     all_dates = sorted(set().union(*[df.index for df, _ in sym_dfs.values()]))
 
-    # ── Accumulate equity: reindex each symbol to all_dates then ffill ────────
+    # ── Accumulate equity ─────────────────────────────────────────────────────
     combined: dict = defaultdict(lambda: {"pnl": 0.0, "mtm": 0.0, "cash_gic": 0.0})
 
     for symbol, (df, sym_positions) in sym_dfs.items():
@@ -134,8 +160,6 @@ def get_aggregate_history(
         acct = accounts.get(sym_positions[0].account_id)
         acct_ccy = acct.base_currency.upper() if acct else reporting_currency
 
-        # Reindex to the combined date universe, ffill across exchange holiday gaps,
-        # then dropna so dates before this symbol's first price are excluded.
         df_aligned = df.reindex(all_dates).ffill().dropna(subset=["Close"])
 
         for dt, row in df_aligned.iterrows():
@@ -144,8 +168,7 @@ def get_aggregate_history(
             combined[dt]["mtm"] += close * total_qty * fx
             combined[dt]["pnl"] += (close - avg_cost) * total_qty * fx
 
-    # ── Add Cash and GIC contributions to every chart date ────────────────────
-    from datetime import date as date_type
+    # ── Add Cash and GIC contributions ───────────────────────────────────────
     non_eq_q = db.query(Position).filter(
         Position.category.in_([CategoryEnum.Cash, CategoryEnum.GIC])
     )
@@ -160,7 +183,7 @@ def get_aggregate_history(
 
         for dt in all_dates:
             if dt < pos.date_added:
-                continue  # position not yet open on this date
+                continue
 
             if cat == "Cash":
                 mtm_pos = pos.quantity * pos.cost_per_share
@@ -172,11 +195,13 @@ def get_aggregate_history(
                 pnl_pos = (spot - pos.cost_per_share) * pos.quantity
 
             fx = _fx_on_date(pos_ccy, acct_ccy, dt) * _fx_on_date(acct_ccy, reporting_currency, dt)
-            combined[dt]["mtm"]     += mtm_pos * fx
-            combined[dt]["pnl"]     += pnl_pos * fx
-            combined[dt]["cash_gic"] += mtm_pos * fx   # running total for the dedicated line
+            combined[dt]["mtm"]      += mtm_pos * fx
+            combined[dt]["pnl"]      += pnl_pos * fx
+            combined[dt]["cash_gic"] += mtm_pos * fx
 
-    label = "Portfolio" if account_id is None else (accounts[account_id].name if account_id in accounts else f"Account {account_id}")
+    label = "Portfolio" if account_id is None else (
+        accounts[account_id].name if account_id in accounts else f"Account {account_id}"
+    )
     points = [
         HistoryPoint(date=dt, close_price=0.0, pnl=v["pnl"], mtm=v["mtm"], cash_gic=v["cash_gic"])
         for dt, v in sorted(combined.items())
@@ -188,10 +213,15 @@ def get_aggregate_history(
 def get_history(
     symbol: str = Query(..., description="Yahoo Finance symbol"),
     account_id: Optional[int] = Query(default=None),
+    use_cache: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     """
     Reconstructs historical PnL for a symbol (or specific position).
+
+    When ``use_cache=true`` the response is served from the local SQLite
+    cache (fast).  When ``use_cache=false`` (default) data is fetched live
+    from Yahoo Finance and the cache is updated.
     """
     q = db.query(Position).filter(Position.symbol == symbol)
     if account_id is not None:
@@ -209,14 +239,19 @@ def get_history(
     total_quantity = sum(p.quantity for p in equity_positions)
     avg_cost = sum(p.quantity * p.cost_per_share for p in equity_positions) / total_quantity
 
-    df = fetch_history(symbol, start_date=earliest_date)
+    df = _fetch_or_cache(symbol, earliest_date, use_cache)
     if df.empty:
+        if use_cache:
+            return HistoryOut(symbol=symbol, account_id=account_id, points=[])
         raise HTTPException(status_code=503, detail=f"Could not fetch historical data for '{symbol}'")
 
     points = [
-        HistoryPoint(date=dt, close_price=float(row["Close"]),
-                     pnl=(float(row["Close"]) - avg_cost) * total_quantity,
-                     mtm=float(row["Close"]) * total_quantity)
+        HistoryPoint(
+            date=dt,
+            close_price=float(row["Close"]),
+            pnl=(float(row["Close"]) - avg_cost) * total_quantity,
+            mtm=float(row["Close"]) * total_quantity,
+        )
         for dt, row in df.iterrows()
     ]
     return HistoryOut(symbol=symbol, account_id=account_id, points=points)
