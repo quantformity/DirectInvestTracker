@@ -164,6 +164,25 @@ export interface OllamaModelsResponse {
   error: string | null;
 }
 
+export interface ReportSummaryRequest {
+  period_label: string;
+  date_range: string;
+  reporting_currency: string;
+  total_mtm: number;
+  total_pnl: number;
+  period_gain: number | null;
+  period_pct: number | null;
+  positions: EnrichedPosition[];
+  market_data: MarketData[];
+  summary_by_category: SummaryGroup[];
+  summary_by_account: SummaryGroup[];
+}
+
+export interface ReportSummaryResponse {
+  summary: string;
+  error: string | null;
+}
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 export const api = {
@@ -214,6 +233,8 @@ export const api = {
     aiClient.post<ChartResponse>("/ai/chart", { prompt }).then((r) => r.data),
   executeSQL: (sql: string, question: string) =>
     aiClient.post<ChatResponse>("/ai/sql/execute", { sql, question }).then((r) => r.data),
+  getReportSummary: (data: ReportSummaryRequest) =>
+    aiClient.post<ReportSummaryResponse>("/ai/report-summary", data).then((r) => r.data),
   planAction: (message: string) =>
     aiClient.post<ActionPlan>("/ai/action/plan", { message }).then((r) => r.data),
   executeAction: (action: string, params: Record<string, unknown>) =>

@@ -14,7 +14,7 @@ from app.models import Position, Account, CategoryEnum
 from app.schemas import (
     ChatRequest, ChatResponse, ChartRequest, ChartResponse,
     ActionRequest, ActionPlan, ExecuteActionRequest, ExecuteActionResponse,
-    SqlExecuteRequest,
+    SqlExecuteRequest, ReportSummaryRequest, ReportSummaryResponse,
 )
 from app.services import ollama
 
@@ -311,6 +311,117 @@ def ai_chart(request: ChartRequest, db: Session = Depends(get_db)):
 
     # ── Fallback: no code block found, return as text ────────────────────────
     return ChartResponse(type="error", data=f"Could not parse LLM output into SQL or Python. Raw: {llm_output[:300]}")
+
+
+# ─── Report summary endpoint ─────────────────────────────────────────────────
+
+@router.post("/report-summary", response_model=ReportSummaryResponse)
+def ai_report_summary(request: ReportSummaryRequest):
+    """Generate an AI narrative analysis of the portfolio report data."""
+
+    # ── Build a compact text snapshot of the report data ─────────────────────
+    lines: list[str] = [
+        f"PORTFOLIO REPORT — {request.period_label} ({request.date_range})",
+        f"Reporting Currency: {request.reporting_currency}",
+        "",
+        "OVERVIEW:",
+        f"  Total MTM:  {request.reporting_currency} {request.total_mtm:,.2f}",
+        f"  Total PnL:  {request.reporting_currency} {request.total_pnl:+,.2f}",
+    ]
+    if request.period_gain is not None:
+        pct = f" ({request.period_pct:+.1f}%)" if request.period_pct is not None else ""
+        lines.append(
+            f"  {request.period_label} Gain: {request.reporting_currency} "
+            f"{request.period_gain:+,.2f}{pct}"
+        )
+
+    lines += ["", "BY CATEGORY:"]
+    for g in request.summary_by_category:
+        lines.append(
+            f"  {g.get('group_key','?')}: "
+            f"MTM={g.get('total_mtm_reporting',0):,.2f}  "
+            f"PnL={g.get('total_pnl_reporting',0):+,.2f}  "
+            f"({g.get('proportion',0):.1f}%)"
+        )
+
+    lines += ["", "BY ACCOUNT:"]
+    for g in request.summary_by_account:
+        lines.append(
+            f"  {g.get('group_key','?')}: "
+            f"MTM={g.get('total_mtm_reporting',0):,.2f}  "
+            f"PnL={g.get('total_pnl_reporting',0):+,.2f}  "
+            f"({g.get('proportion',0):.1f}%)"
+        )
+
+    equity = [p for p in request.positions if p.get("category") == "Equity"]
+    if equity:
+        lines += ["", "EQUITY POSITIONS (sorted by PnL, best to worst):"]
+        for p in sorted(equity, key=lambda x: float(x.get("pnl_reporting", 0)), reverse=True):
+            spot = f"{p['spot_price']:.2f}" if p.get("spot_price") else "—"
+            lines.append(
+                f"  {p.get('symbol','?')} | "
+                f"qty={p.get('quantity',0):.0f}  cost={p.get('cost_per_share',0):.2f}  spot={spot}  "
+                f"MTM={p.get('mtm_reporting',0):,.2f}  PnL={p.get('pnl_reporting',0):+,.2f}  "
+                f"wt={p.get('proportion',0):.1f}%"
+            )
+
+    non_equity = [p for p in request.positions if p.get("category") in ("Cash", "GIC")]
+    if non_equity:
+        lines += ["", "CASH & GIC POSITIONS:"]
+        for p in non_equity:
+            lines.append(
+                f"  {p.get('symbol','?')} ({p.get('category','?')}) | "
+                f"MTM={p.get('mtm_reporting',0):,.2f}  wt={p.get('proportion',0):.1f}%"
+            )
+
+    if request.market_data:
+        lines += ["", "MARKET DATA:"]
+        for m in request.market_data:
+            beta = f"beta={m['beta']:.2f}" if m.get("beta") else "beta=n/a"
+            pe   = f"P/E={m['pe_ratio']:.1f}" if m.get("pe_ratio") else "P/E=n/a"
+            chg  = f"1d={m['change_percent']:+.2f}%" if m.get("change_percent") is not None else "1d=n/a"
+            lines.append(
+                f"  {m.get('symbol','?')}: price={m.get('last_price',0):.2f}  "
+                f"{chg}  {pe}  {beta}"
+            )
+
+    data_text = "\n".join(lines)
+
+    system = (
+        "You are a professional portfolio analyst writing a concise narrative summary "
+        "for inclusion in a printed investment report.\n\n"
+        "Analyse the data provided and write a clear, insightful summary covering:\n"
+        "1. **Overall Portfolio Health** — total value, cumulative PnL and period performance in plain terms.\n"
+        "2. **Top Performer** — the single biggest positive PnL contributor, with the gain amount and % weight.\n"
+        "3. **Worst Performer** — the biggest PnL drag, with the loss amount.\n"
+        "4. **Concentration Risk** — flag any position(s) with weight >20% and explain the risk.\n"
+        "5. **Market Sensitivity** — identify the highest-beta equity and what that means for the portfolio.\n"
+        "6. **Other Observations** — e.g. currency exposure, Cash/GIC cushion, P/E outliers, "
+        "or any notable patterns worth mentioning.\n\n"
+        "Style rules:\n"
+        "- Use professional but plain language — avoid jargon.\n"
+        "- Cite actual numbers (rounded to 2 d.p.) to support every point.\n"
+        "- 3–5 sentences per section.\n"
+        "- Do NOT reproduce raw tables — synthesise into narrative.\n"
+        "- Total length: 400–600 words.\n"
+        "- Use section headings in **bold** (markdown).\n"
+    )
+
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                f"Here is the portfolio data for the report:\n\n{data_text}\n\n"
+                "Please write the analyst summary."
+            ),
+        }
+    ]
+
+    reply = ollama.chat(messages, system_prompt=system)
+
+    if reply.startswith("Error"):
+        return ReportSummaryResponse(summary="", error=reply)
+    return ReportSummaryResponse(summary=reply)
 
 
 # ─── Action endpoints ─────────────────────────────────────────────────────────

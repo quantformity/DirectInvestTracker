@@ -189,6 +189,25 @@ class ExecuteActionResponse(BaseModel):
     message: str
 
 
+class ReportSummaryRequest(BaseModel):
+    period_label: str
+    date_range: str
+    reporting_currency: str
+    total_mtm: float
+    total_pnl: float
+    period_gain: Optional[float] = None
+    period_pct: Optional[float] = None
+    positions: list[dict] = []
+    market_data: list[dict] = []
+    summary_by_category: list[dict] = []
+    summary_by_account: list[dict] = []
+
+
+class ReportSummaryResponse(BaseModel):
+    summary: str
+    error: Optional[str] = None
+
+
 # ─── AI Settings ──────────────────────────────────────────────────────────────
 
 class OllamaSettingsOut(BaseModel):
