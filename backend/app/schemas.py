@@ -64,6 +64,7 @@ class PositionOut(PositionBase):
 
 class MarketDataOut(BaseModel):
     symbol: str
+    company_name: Optional[str]
     last_price: Optional[float]
     pe_ratio: Optional[float]
     change_percent: Optional[float]

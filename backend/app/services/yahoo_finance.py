@@ -52,7 +52,7 @@ def _fetch_one(symbol: str) -> tuple[str, dict]:
     Uses quoteSummary (full data) with v8/chart as fallback.
     """
     global _crumb
-    empty = {"last_price": None, "pe_ratio": None, "change_percent": None, "beta": None}
+    empty = {"last_price": None, "pe_ratio": None, "change_percent": None, "beta": None, "company_name": None}
 
     crumb = _get_crumb()
     if crumb:
@@ -81,11 +81,13 @@ def _fetch_one(symbol: str) -> tuple[str, dict]:
                 pe      = ((summary.get("trailingPE") or {}).get("raw")
                            or (summary.get("forwardPE") or {}).get("raw"))
                 beta    = (stats.get("beta") or {}).get("raw")
+                name    = price_d.get("longName") or price_d.get("shortName")
                 return symbol, {
                     "last_price":     price,
                     "pe_ratio":       pe,
                     "change_percent": round(chg_raw * 100, 4) if chg_raw else None,
                     "beta":           beta,
+                    "company_name":   name,
                 }
         except Exception as exc:
             logger.warning("quoteSummary failed for %s: %s — falling back to chart", symbol, exc)
@@ -104,7 +106,7 @@ def _fetch_one(symbol: str) -> tuple[str, dict]:
             price = meta.get("regularMarketPrice")
             prev  = meta.get("chartPreviousClose")
             chg   = round((price - prev) / prev * 100, 4) if price and prev else None
-            return symbol, {"last_price": price, "pe_ratio": None, "change_percent": chg, "beta": None}
+            return symbol, {"last_price": price, "pe_ratio": None, "change_percent": chg, "beta": None, "company_name": None}
     except Exception as exc:
         logger.warning("Failed to fetch price for %s: %s", symbol, exc)
 

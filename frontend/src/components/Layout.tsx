@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: "/market", label: "Market Insights", icon: "💹" },
   { to: "/history", label: "History", icon: "📅" },
   { to: "/industry", label: "Industry", icon: "🏭" },
+  { to: "/fx", label: "FX Rates", icon: "💱" },
   { to: "/report", label: "Report", icon: "📄" },
 ];
 

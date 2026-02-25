@@ -112,7 +112,10 @@ function MarketCard({
       <div className="flex justify-between items-start mb-3">
         <div>
           <div className="font-bold text-white text-lg">{data.symbol}</div>
-          <div className="text-gray-400 text-xs mt-0.5">
+          {data.company_name && (
+            <div className="text-gray-400 text-xs mt-0.5 leading-tight">{data.company_name}</div>
+          )}
+          <div className="text-gray-600 text-xs mt-0.5">
             {new Date(data.timestamp).toLocaleString()}
           </div>
         </div>

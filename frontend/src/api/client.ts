@@ -41,6 +41,7 @@ export interface Position {
 
 export interface MarketData {
   symbol: string;
+  company_name: string | null;
   last_price: number | null;
   pe_ratio: number | null;
   change_percent: number | null;
@@ -191,6 +192,12 @@ export interface IndustryMapping {
   industry: string;
 }
 
+export interface FxMatrix {
+  currencies: string[];
+  matrix: Record<string, Record<string, number | null>>;
+  updated_at: string | null;
+}
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 export const api = {
@@ -217,6 +224,7 @@ export const api = {
 
   // FX Rates
   getFxRates: () => client.get<FxRate[]>("/fx-rates/").then((r) => r.data),
+  getFxMatrix: () => client.get<FxMatrix>("/fx-rates/matrix").then((r) => r.data),
 
   // Summary
   getSummary: (group_by = "category") =>
