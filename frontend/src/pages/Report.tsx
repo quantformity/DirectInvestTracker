@@ -109,7 +109,7 @@ function ReportPieChart({
             ))}
           </Pie>
           <Tooltip
-            formatter={(value: number, name: string) => [`$${fmt(value)} ${currency}`, name]}
+            formatter={(value: number | undefined, name: string | undefined) => [`$${fmt(value ?? 0)} ${currency}`, name ?? ""]}
             contentStyle={{ fontSize: 11, borderRadius: 8 }}
           />
           <Legend
@@ -166,7 +166,7 @@ function ReportBarChart({
           {hasNeg && <ReferenceLine y={0} stroke="#d1d5db" strokeWidth={1} />}
           <Tooltip
             contentStyle={{ fontSize: 11, borderRadius: 8 }}
-            formatter={(value: number) => [`$${fmt(value)}`, currency]}
+            formatter={(value: number | undefined) => [`$${fmt(value ?? 0)}`, currency]}
           />
           <Bar dataKey="value" radius={[4, 4, 0, 0]}>
             {data.map((entry, i) => (
@@ -606,7 +606,7 @@ export function Report() {
                       }
                     />
                     <Tooltip
-                      formatter={(v: number, name: string) => [`$${fmt(v)} ${currency}`, name]}
+                      formatter={(v: number | undefined, name: string | undefined) => [`$${fmt(v ?? 0)} ${currency}`, name ?? ""]}
                       contentStyle={{ fontSize: 11, borderRadius: 8 }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
