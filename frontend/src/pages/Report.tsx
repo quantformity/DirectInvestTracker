@@ -148,14 +148,17 @@ function ReportBarChart({
       <div className="text-sm font-semibold text-gray-700 mb-3">
         {title} <span className="text-gray-400 font-normal">({currency})</span>
       </div>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data} margin={{ top: 4, right: 16, left: 16, bottom: 4 }} barCategoryGap="30%">
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={data} margin={{ top: 4, right: 16, left: 16, bottom: 60 }} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
           <XAxis
             dataKey="symbol"
             tick={{ fill: "#6b7280", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
+            angle={-45}
+            textAnchor="end"
+            interval={0}
           />
           <YAxis
             tickFormatter={shortFmt}
