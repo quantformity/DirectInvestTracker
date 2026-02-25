@@ -41,6 +41,7 @@ export interface Position {
 
 export interface MarketData {
   symbol: string;
+  company_name: string | null;
   last_price: number | null;
   pe_ratio: number | null;
   change_percent: number | null;

@@ -57,6 +57,7 @@ def sync_market_data():
                 # Always insert a new row (latest per symbol is queried by MAX timestamp)
                 row = MarketData(
                     symbol=symbol,
+                    company_name=data.get("company_name"),
                     last_price=data["last_price"],
                     pe_ratio=data["pe_ratio"],
                     change_percent=data["change_percent"],

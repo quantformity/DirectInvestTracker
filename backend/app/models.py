@@ -45,6 +45,7 @@ class MarketData(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     last_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     pe_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
     change_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
