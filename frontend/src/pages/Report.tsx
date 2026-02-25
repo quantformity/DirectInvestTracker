@@ -293,6 +293,11 @@ export function Report() {
       .finally(() => { if (aiReqRef.current === id) setAiLoading(false); });
   }, [summaryCat, summaryAcct, allHistory, period, marketData, aiLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Derived from summaryCat — must be declared before the memos that use them
+  const currency    = summaryCat?.reporting_currency ?? "CAD";
+  const positions   = summaryCat?.positions ?? [];
+  const periodUpper = period === "today" ? "Today" : period.toUpperCase();
+
   // Filter history to the selected period
   const historyPoints = useMemo<HistoryPoint[]>(() => {
     const start = getPeriodStart(period);
@@ -325,11 +330,6 @@ export function Report() {
     });
     return result;
   }, [symbolHistories, marketData, positions, period]);
-
-  // Derived from summaryCat — must be declared before the memos that use them
-  const currency    = summaryCat?.reporting_currency ?? "CAD";
-  const positions   = summaryCat?.positions ?? [];
-  const periodUpper = period === "today" ? "Today" : period.toUpperCase();
 
   // Per-position period PnL: proportional share of symbol's period PnL by quantity
   const positionPeriodPnl = useMemo<Map<number, number>>(() => {
