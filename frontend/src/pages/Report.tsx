@@ -12,14 +12,15 @@ import { api, type SummaryOut, type HistoryPoint, type MarketData, type ReportSu
 
 // ── Period helpers ────────────────────────────────────────────────────────────
 
-type Period = "wtd" | "mtd" | "qtd" | "ytd" | "full";
+type Period = "today" | "wtd" | "mtd" | "qtd" | "ytd" | "full";
 
 const PERIOD_LABELS: Record<Period, string> = {
-  wtd:  "Week to Date",
-  mtd:  "Month to Date",
-  qtd:  "Quarter to Date",
-  ytd:  "Year to Date",
-  full: "Full History",
+  today: "Today",
+  wtd:   "Week to Date",
+  mtd:   "Month to Date",
+  qtd:   "Quarter to Date",
+  ytd:   "Year to Date",
+  full:  "Full History",
 };
 
 function getPeriodStart(period: Period): string | null {
@@ -31,7 +32,8 @@ function getPeriodStart(period: Period): string | null {
   const pad   = (n: number) => String(n).padStart(2, "0");
 
   switch (period) {
-    case "ytd": return `${y}-01-01`;
+    case "today": return `${y}-${pad(m + 1)}-${pad(d)}`;
+    case "ytd":   return `${y}-01-01`;
     case "qtd": {
       const qStart = Math.floor(m / 3) * 3;
       return `${y}-${pad(qStart + 1)}-01`;
@@ -51,6 +53,7 @@ function periodDateRange(period: Period, allPoints: HistoryPoint[], today: strin
     const earliest = allPoints[0]?.date ?? today;
     return `${earliest} – ${today}`;
   }
+  if (period === "today") return today;
   const start = getPeriodStart(period)!;
   return `${start} – ${today}`;
 }
@@ -296,10 +299,24 @@ export function Report() {
     return start ? allHistory.filter((p) => p.date >= start) : allHistory;
   }, [period, allHistory]);
 
-  // Per-symbol period PnL: delta of pnl field between start and end of period window
+  // Per-symbol period PnL:
+  //   "today"  → derived from market data change_percent × eligible MTM (daily history
+  //              has only one close, so diff = 0; market data is more accurate here)
+  //   other    → delta of pnl field between start and end of the history window
   const symbolPeriodPnl = useMemo<Map<string, number>>(() => {
-    const start  = getPeriodStart(period);
     const result = new Map<string, number>();
+    if (period === "today") {
+      marketData.forEach((md) => {
+        if (md.change_percent == null) return;
+        const eligibleMtm = positions
+          .filter((p) => p.symbol === md.symbol && p.category === "Equity" && p.date_added !== TODAY)
+          .reduce((s, p) => s + p.mtm_reporting, 0);
+        if (eligibleMtm !== 0)
+          result.set(md.symbol, (md.change_percent / 100) * eligibleMtm);
+      });
+      return result;
+    }
+    const start = getPeriodStart(period);
     symbolHistories.forEach((points, sym) => {
       const pts   = start ? points.filter((p) => p.date >= start) : points;
       const first = pts[0];
@@ -307,12 +324,12 @@ export function Report() {
       if (first && last) result.set(sym, last.pnl - first.pnl);
     });
     return result;
-  }, [symbolHistories, period]);
+  }, [symbolHistories, marketData, positions, period]);
 
   // Derived from summaryCat — must be declared before the memos that use them
   const currency    = summaryCat?.reporting_currency ?? "CAD";
   const positions   = summaryCat?.positions ?? [];
-  const periodUpper = period.toUpperCase();
+  const periodUpper = period === "today" ? "Today" : period.toUpperCase();
 
   // Per-position period PnL: proportional share of symbol's period PnL by quantity
   const positionPeriodPnl = useMemo<Map<number, number>>(() => {
@@ -404,24 +421,37 @@ export function Report() {
     .filter((d) => d.value !== 0)
     .sort((a, b) => b.value - a.value);
 
-  // Period gain: last MTM − first MTM within the filtered window
+  // Period gain:
+  //   "today" → sum of 1-day PnL from marketData (symbolPeriodPnl already uses change_percent)
+  //   other   → last MTM − first MTM within the filtered history window
   const firstPt = historyPoints[0];
   const lastPt  = historyPoints[historyPoints.length - 1];
-  const periodGain = lastPt && firstPt ? lastPt.mtm - firstPt.mtm : null;
-  const periodPct  =
-    periodGain != null && firstPt && firstPt.mtm > 0
-      ? (periodGain / firstPt.mtm) * 100
-      : null;
+  const periodGain: number | null = period === "today"
+    ? [...symbolPeriodPnl.values()].reduce((s, v) => s + v, 0)
+    : (lastPt && firstPt ? lastPt.mtm - firstPt.mtm : null);
+  const periodPct: number | null = (() => {
+    if (periodGain == null) return null;
+    if (period === "today") {
+      // base ≈ current equity MTM minus today's gain (i.e. yesterday's equity MTM)
+      const equityMtm = positions
+        .filter((p) => p.category === "Equity")
+        .reduce((s, p) => s + p.mtm_reporting, 0);
+      const base = equityMtm - periodGain;
+      return base > 0 ? (periodGain / base) * 100 : null;
+    }
+    return firstPt && firstPt.mtm > 0 ? (periodGain / firstPt.mtm) * 100 : null;
+  })();
 
   const dateRange   = periodDateRange(period, allHistory, TODAY);
   const periodLabel = PERIOD_LABELS[period];
 
   const PERIODS: { key: Period; label: string }[] = [
-    { key: "wtd",  label: "WTD"  },
-    { key: "mtd",  label: "MTD"  },
-    { key: "qtd",  label: "QTD"  },
-    { key: "ytd",  label: "YTD"  },
-    { key: "full", label: "Full" },
+    { key: "today", label: "Today" },
+    { key: "wtd",   label: "WTD"  },
+    { key: "mtd",   label: "MTD"  },
+    { key: "qtd",   label: "QTD"  },
+    { key: "ytd",   label: "YTD"  },
+    { key: "full",  label: "Full" },
   ];
 
   return (
@@ -604,7 +634,7 @@ export function Report() {
           </section>
 
           {/* ── Performance Chart ──────────────────────────────────────────── */}
-          {historyPoints.length > 1 && (
+          {historyPoints.length > 1 && period !== "today" && (
             <section className="mb-10">
               <h2 className="text-lg font-semibold mb-4 text-gray-800">
                 {periodLabel} Performance ({dateRange})
