@@ -186,6 +186,11 @@ export interface ReportSummaryResponse {
   error: string | null;
 }
 
+export interface IndustryMapping {
+  symbol: string;
+  industry: string;
+}
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 export const api = {
@@ -228,6 +233,18 @@ export const api = {
     if (useCache) params.use_cache = true;
     return client.get<HistoryOut>("/history/aggregate", { params }).then((r) => r.data);
   },
+  getHistoryByIndustry: (industry: string, useCache?: boolean) =>
+    client.get<HistoryOut>("/history/industry", {
+      params: { industry, ...(useCache ? { use_cache: true } : {}) },
+    }).then((r) => r.data),
+
+  // Industry Mappings
+  getIndustryMappings: () =>
+    client.get<IndustryMapping[]>("/industry/").then((r) => r.data),
+  upsertIndustryMapping: (symbol: string, industry: string) =>
+    client.put<IndustryMapping>(`/industry/${symbol}`, { industry }).then((r) => r.data),
+  deleteIndustryMapping: (symbol: string) =>
+    client.delete(`/industry/${symbol}`).then((r) => r.data),
 
   // AI  (use aiClient — long timeout for LLM inference)
   chat: (messages: ChatMessage[]) =>

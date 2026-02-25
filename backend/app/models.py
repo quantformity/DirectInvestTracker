@@ -66,3 +66,10 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(String(500), nullable=False)
+
+
+class IndustryMapping(Base):
+    __tablename__ = "industry_mappings"
+
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    industry: Mapped[str] = mapped_column(String(100), nullable=False, default="Unspecified")

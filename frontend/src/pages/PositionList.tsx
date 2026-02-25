@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { api, type EnrichedPosition } from "../api/client";
 import { DataTable } from "../components/DataTable";
@@ -9,62 +9,83 @@ const fmt = (n: number, decimals = 2) =>
 
 const columnHelper = createColumnHelper<EnrichedPosition>();
 
-const columns = [
-  columnHelper.accessor("symbol", { header: "Symbol", cell: (i) => <span className="font-semibold text-white">{i.getValue()}</span> }),
-  columnHelper.accessor("category", { header: "Category" }),
-  columnHelper.accessor("account_name", { header: "Account" }),
-  columnHelper.accessor("account_currency", { header: "Acct CCY" }),
-  columnHelper.accessor("stock_currency", {
-    header: "Stock CCY",
-    cell: (i) => <span className="px-2 py-0.5 bg-purple-900/50 text-purple-300 rounded text-xs">{i.getValue()}</span>,
-  }),
-  columnHelper.accessor("quantity", { header: "Qty", cell: (i) => fmt(i.getValue(), 0) }),
-  columnHelper.accessor("cost_per_share", {
-    header: "Cost",
-    cell: (i) => fmt(i.getValue()),
-  }),
-  columnHelper.accessor("spot_price", {
-    header: "Spot",
-    cell: (i) => i.getValue() != null ? fmt(i.getValue()!) : <span className="text-gray-500">—</span>,
-  }),
-  columnHelper.accessor("mtm_account", { header: "MTM (Acct)", cell: (i) => fmt(i.getValue()) }),
-  columnHelper.accessor("pnl_account", {
-    header: "PnL (Acct)",
-    cell: (i) => {
-      const v = i.getValue();
-      return <span className={v >= 0 ? "text-green-400" : "text-red-400"}>{v >= 0 ? "+" : ""}{fmt(v)}</span>;
-    },
-  }),
-  columnHelper.accessor("mtm_reporting", { header: "MTM (Rpt)", cell: (i) => fmt(i.getValue()) }),
-  columnHelper.accessor("pnl_reporting", {
-    header: "PnL (Rpt)",
-    cell: (i) => {
-      const v = i.getValue();
-      return <span className={v >= 0 ? "text-green-400" : "text-red-400"}>{v >= 0 ? "+" : ""}{fmt(v)}</span>;
-    },
-  }),
-  columnHelper.accessor("proportion", {
-    header: "Weight %",
-    cell: (i) => <span className="text-gray-300">{fmt(i.getValue(), 1)}%</span>,
-  }),
-];
+function makeColumns(industryMap: Record<string, string>): ColumnDef<EnrichedPosition, unknown>[] {
+  return [
+    columnHelper.accessor("symbol", { header: "Symbol", cell: (i) => <span className="font-semibold text-white">{i.getValue()}</span> }),
+    columnHelper.accessor("category", { header: "Category" }),
+    columnHelper.display({
+      id: "industry",
+      header: "Industry",
+      cell: ({ row }) => {
+        const ind = industryMap[row.original.symbol] ?? "Unspecified";
+        return (
+          <span className={ind === "Unspecified" ? "text-gray-500 text-xs" : "text-purple-300 text-xs"}>
+            {ind}
+          </span>
+        );
+      },
+    }),
+    columnHelper.accessor("account_name", { header: "Account" }),
+    columnHelper.accessor("account_currency", { header: "Acct CCY" }),
+    columnHelper.accessor("stock_currency", {
+      header: "Stock CCY",
+      cell: (i) => <span className="px-2 py-0.5 bg-purple-900/50 text-purple-300 rounded text-xs">{i.getValue()}</span>,
+    }),
+    columnHelper.accessor("quantity", { header: "Qty", cell: (i) => fmt(i.getValue(), 0) }),
+    columnHelper.accessor("cost_per_share", {
+      header: "Cost",
+      cell: (i) => fmt(i.getValue()),
+    }),
+    columnHelper.accessor("spot_price", {
+      header: "Spot",
+      cell: (i) => i.getValue() != null ? fmt(i.getValue()!) : <span className="text-gray-500">—</span>,
+    }),
+    columnHelper.accessor("mtm_account", { header: "MTM (Acct)", cell: (i) => fmt(i.getValue()) }),
+    columnHelper.accessor("pnl_account", {
+      header: "PnL (Acct)",
+      cell: (i) => {
+        const v = i.getValue();
+        return <span className={v >= 0 ? "text-green-400" : "text-red-400"}>{v >= 0 ? "+" : ""}{fmt(v)}</span>;
+      },
+    }),
+    columnHelper.accessor("mtm_reporting", { header: "MTM (Rpt)", cell: (i) => fmt(i.getValue()) }),
+    columnHelper.accessor("pnl_reporting", {
+      header: "PnL (Rpt)",
+      cell: (i) => {
+        const v = i.getValue();
+        return <span className={v >= 0 ? "text-green-400" : "text-red-400"}>{v >= 0 ? "+" : ""}{fmt(v)}</span>;
+      },
+    }),
+    columnHelper.accessor("proportion", {
+      header: "Weight %",
+      cell: (i) => <span className="text-gray-300">{fmt(i.getValue(), 1)}%</span>,
+    }),
+  ] as ColumnDef<EnrichedPosition, unknown>[];
+}
 
 export function PositionList() {
   const { reportingCurrency } = useSettingsStore();
   const [data, setData] = useState<EnrichedPosition[]>([]);
   const [totals, setTotals] = useState({ mtm: 0, pnl: 0, currency: "CAD" });
+  const [industryMap, setIndustryMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const fetch = useCallback(async () => {
     try {
-      const summary = await api.getSummary();
+      const [summary, mappings] = await Promise.all([
+        api.getSummary(),
+        api.getIndustryMappings(),
+      ]);
       setData(summary.positions);
       setTotals({
         mtm: summary.total_mtm_reporting,
         pnl: summary.total_pnl_reporting,
         currency: summary.reporting_currency,
       });
+      const map: Record<string, string> = {};
+      mappings.forEach((m) => { map[m.symbol] = m.industry; });
+      setIndustryMap(map);
       setError("");
     } catch {
       setError("Failed to load positions — is the backend running?");
@@ -78,6 +99,8 @@ export function PositionList() {
     const interval = setInterval(fetch, 30_000);
     return () => clearInterval(interval);
   }, [fetch]);
+
+  const columns = useMemo(() => makeColumns(industryMap), [industryMap]);
 
   return (
     <div className="p-6">
@@ -103,7 +126,7 @@ export function PositionList() {
         <div className="flex items-center justify-center h-64 text-gray-500">Loading positions…</div>
       ) : (
         <>
-          <DataTable data={data} columns={columns as ColumnDef<EnrichedPosition, unknown>[]} />
+          <DataTable data={data} columns={columns} />
           <p className="mt-3 text-xs text-gray-600">
             Reporting currency: <strong>{reportingCurrency}</strong> · Auto-refreshes every 30s
           </p>
