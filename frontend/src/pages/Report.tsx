@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import quantformityIcon from "/QuantformityIcon.png";
 import { useNavigate } from "react-router-dom";
 import {
   LineChart, Line,
@@ -468,7 +469,7 @@ export function Report() {
               <p className="text-gray-400 text-xs mt-0.5">Generated on {TODAY} · v{__APP_VERSION__}</p>
             </div>
             <img
-              src="/QuantformityIcon.png"
+              src={quantformityIcon}
               alt="Quantformity"
               className="h-16 object-contain opacity-90"
             />
