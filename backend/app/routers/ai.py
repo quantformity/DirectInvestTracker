@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Position, Account, CategoryEnum
+from app.models import Position, Account, CategoryEnum, IndustryMapping
 from app.schemas import (
     ChatRequest, ChatResponse, ChartRequest, ChartResponse,
     ActionRequest, ActionPlan, ExecuteActionRequest, ExecuteActionResponse,
@@ -160,6 +160,19 @@ def _build_portfolio_context(db: Session) -> str:
         lines.append("\nLATEST FX RATES:")
         for pair, rate in fx_rates.items():
             lines.append(f"  {pair}: {rate:.6f}")
+
+    # Industry mappings (only if any are set)
+    industry_mappings = db.query(IndustryMapping).all()
+    if industry_mappings:
+        industry_map = {m.symbol: m.industry for m in industry_mappings}
+        # Group symbols by industry
+        from collections import defaultdict
+        by_industry: dict[str, list[str]] = defaultdict(list)
+        for sym, ind in sorted(industry_map.items()):
+            by_industry[ind].append(sym)
+        lines.append("\nINDUSTRY MAPPINGS:")
+        for ind, syms in sorted(by_industry.items()):
+            lines.append(f"  {ind}: {', '.join(syms)}")
 
     return "\n".join(lines)
 

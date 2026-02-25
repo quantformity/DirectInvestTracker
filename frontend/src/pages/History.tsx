@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { api, type Account, type Position, type HistoryPoint } from "../api/client";
 
-type ViewMode = "portfolio" | "account" | "symbol";
+type ViewMode = "portfolio" | "account" | "symbol" | "industry";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -16,15 +16,17 @@ export function History() {
   const [mode, setMode]                 = useState<ViewMode>("portfolio");
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [selectedAccount, setSelectedAccount] = useState<number>(0);
+  const [industries, setIndustries]     = useState<string[]>([]);
+  const [selectedIndustry, setSelectedIndustry] = useState("");
   const [points, setPoints]             = useState<HistoryPoint[]>([]);
   const [chartTitle, setChartTitle]     = useState("");
   const [loading, setLoading]           = useState(false);
   const [refreshing, setRefreshing]     = useState(false);
   const [error, setError]               = useState("");
 
-  // Load accounts + positions once
+  // Load accounts + positions + industry mappings once
   useEffect(() => {
-    Promise.all([api.getAccounts(), api.getPositions()]).then(([accs, poss]) => {
+    Promise.all([api.getAccounts(), api.getPositions(), api.getIndustryMappings()]).then(([accs, poss, mappings]) => {
       setAccounts(accs);
       const equitySymbols = [...new Set(
         poss.filter((p) => p.category === "Equity").map((p) => p.symbol)
@@ -32,6 +34,14 @@ export function History() {
       setPositions(poss.filter((p) => equitySymbols.includes(p.symbol)));
       if (equitySymbols.length > 0) setSelectedSymbol(equitySymbols[0]);
       if (accs.length > 0) setSelectedAccount(accs[0].id);
+      // Derive unique industries (excluding Unspecified) from existing mappings
+      const uniqueIndustries = [...new Set(
+        mappings
+          .filter((m) => m.industry !== "Unspecified" && equitySymbols.includes(m.symbol))
+          .map((m) => m.industry)
+      )].sort();
+      setIndustries(uniqueIndustries);
+      if (uniqueIndustries.length > 0) setSelectedIndustry(uniqueIndustries[0]);
     });
   }, []);
 
@@ -48,12 +58,14 @@ export function History() {
     setLoading(true);
     setRefreshing(false);
 
-    if (mode === "symbol" && !selectedSymbol) { setLoading(false); return; }
-    if (mode === "account" && !selectedAccount) { setLoading(false); return; }
+    if (mode === "symbol"   && !selectedSymbol)   { setLoading(false); return; }
+    if (mode === "account"  && !selectedAccount)  { setLoading(false); return; }
+    if (mode === "industry" && !selectedIndustry) { setLoading(false); return; }
 
     const makeCall = (useCache: boolean) =>
       mode === "portfolio" ? api.getAggregateHistory(undefined, useCache) :
       mode === "account"   ? api.getAggregateHistory(selectedAccount, useCache) :
+      mode === "industry"  ? api.getHistoryByIndustry(selectedIndustry, useCache) :
                              api.getHistory(selectedSymbol, undefined, useCache);
 
     // ── Phase 1: cache (instant) ─────────────────────────────────────────────
@@ -90,7 +102,7 @@ export function History() {
       });
 
     return () => { cancelled = true; };
-  }, [mode, selectedSymbol, selectedAccount]);
+  }, [mode, selectedSymbol, selectedAccount, selectedIndustry]);
 
   const equitySymbols = [...new Set(positions.filter((p) => p.category === "Equity").map((p) => p.symbol))];
 
@@ -130,6 +142,7 @@ export function History() {
               { value: "portfolio", label: "Portfolio" },
               { value: "account",   label: "By Account" },
               { value: "symbol",    label: "By Symbol"  },
+              { value: "industry",  label: "By Industry" },
             ] as { value: ViewMode; label: string }[]).map(({ value, label }) => (
               <button
                 key={value}
@@ -174,6 +187,25 @@ export function History() {
           </div>
         )}
 
+        {mode === "industry" && (
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Industry</label>
+            {industries.length === 0 ? (
+              <span className="text-xs text-gray-500 italic">
+                No industries mapped — assign them on the Industry page.
+              </span>
+            ) : (
+              <select
+                className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={selectedIndustry}
+                onChange={(e) => setSelectedIndustry(e.target.value)}
+              >
+                {industries.map((ind) => <option key={ind}>{ind}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+
         {latestPnl != null && !loading && (
           <div>
             <div className="text-xs text-gray-400">Current PnL</div>
@@ -194,7 +226,7 @@ export function History() {
       ) : (loading || (refreshing && points.length === 0)) ? (
         <div className="flex items-center justify-center h-64 text-gray-500">
           Loading history from Yahoo Finance…
-          {(mode === "portfolio" || mode === "account") && (
+          {(mode === "portfolio" || mode === "account" || mode === "industry") && (
             <span className="ml-2 text-xs">(fetching {equitySymbols.length} symbols, may take a moment)</span>
           )}
         </div>

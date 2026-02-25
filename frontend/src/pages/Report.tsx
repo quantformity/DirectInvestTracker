@@ -8,7 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
-import { api, type SummaryOut, type HistoryPoint, type MarketData, type ReportSummaryResponse } from "../api/client";
+import { api, type SummaryOut, type HistoryPoint, type MarketData, type ReportSummaryResponse, type IndustryMapping } from "../api/client";
 
 // ── Period helpers ────────────────────────────────────────────────────────────
 
@@ -193,6 +193,8 @@ export function Report() {
   const [summaryAcct,    setSummaryAcct]    = useState<SummaryOut | null>(null);
   const [summarySym,     setSummarySym]     = useState<SummaryOut | null>(null);
   const [summaryCashGic, setSummaryCashGic] = useState<SummaryOut | null>(null);
+  const [summaryIndustry, setSummaryIndustry] = useState<SummaryOut | null>(null);
+  const [industryMappings, setIndustryMappings] = useState<IndustryMapping[]>([]);
   const [marketData,     setMarketData]     = useState<MarketData[]>([]);
   const [allHistory,      setAllHistory]      = useState<HistoryPoint[]>([]);
   const [symbolHistories, setSymbolHistories] = useState<Map<string, HistoryPoint[]>>(new Map());
@@ -208,18 +210,22 @@ export function Report() {
   useEffect(() => {
     async function load() {
       try {
-        const [cat, acct, sym, cashGic, md, hist] = await Promise.all([
+        const [cat, acct, sym, cashGic, industry, md, hist, industryMaps] = await Promise.all([
           api.getSummary("category"),
           api.getSummary("account"),
           api.getSummary("symbol"),
           api.getSummary("cash_gic"),
+          api.getSummary("industry"),
           api.getMarketData(),
           api.getAggregateHistory(undefined, false),
+          api.getIndustryMappings(),
         ]);
         setSummaryCat(cat);
         setSummaryAcct(acct);
         setSummarySym(sym);
         setSummaryCashGic(cashGic);
+        setSummaryIndustry(industry);
+        setIndustryMappings(industryMaps);
         setMarketData(md);
         setAllHistory(hist.points);
 
@@ -342,6 +348,18 @@ export function Report() {
     });
     return result;
   }, [positions, positionPeriodPnl]);
+
+  // Aggregate period PnL by industry (symbol-level rollup via industryMappings)
+  const industryPeriodPnl = useMemo<Map<string, number>>(() => {
+    const indMap: Record<string, string> = {};
+    industryMappings.forEach((m) => { indMap[m.symbol] = m.industry; });
+    const result = new Map<string, number>();
+    symbolPeriodPnl.forEach((pnl, sym) => {
+      const ind = indMap[sym] ?? "Unspecified";
+      result.set(ind, (result.get(ind) ?? 0) + pnl);
+    });
+    return result;
+  }, [symbolPeriodPnl, industryMappings]);
 
   const handleDownloadPDF = async () => {
     setSaving(true);
@@ -628,6 +646,9 @@ export function Report() {
                 {summaryAcct    && <ReportPieChart title="By Account"           groups={summaryAcct.groups}    currency={currency} />}
                 {summarySym     && <ReportPieChart title="By Symbol"            groups={summarySym.groups}     currency={currency} />}
                 {summaryCashGic && <ReportPieChart title="Cash / GIC vs Other"  groups={summaryCashGic.groups} currency={currency} />}
+                {summaryIndustry && summaryIndustry.groups.length > 0 && (
+                  <ReportPieChart title="By Industry" groups={summaryIndustry.groups} currency={currency} />
+                )}
               </div>
             </section>
           )}
@@ -767,6 +788,69 @@ export function Report() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          {/* ── Industry Analysis ──────────────────────────────────────────── */}
+          {summaryIndustry && summaryIndustry.groups.length > 0 && (
+            <section className="mb-10">
+              <h2 className="text-lg font-semibold mb-4 text-gray-800">Industry Analysis</h2>
+
+              {/* Period PnL bar chart */}
+              {industryPeriodPnl.size > 0 && (
+                <div className="mb-4">
+                  <ReportBarChart
+                    title={`${periodUpper} PnL by Industry`}
+                    data={[...industryPeriodPnl.entries()]
+                      .map(([ind, value]) => ({ symbol: ind, value }))
+                      .sort((a, b) => b.value - a.value)}
+                    currency={currency}
+                    colorPositive="#22c55e"
+                    colorNegative="#ef4444"
+                  />
+                </div>
+              )}
+
+              {/* Holdings by industry table */}
+              <table className="w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
+                <thead className="bg-gray-100 text-gray-600 text-xs uppercase">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Industry</th>
+                    <th className="px-4 py-2 text-right">MTM ({currency})</th>
+                    <th className="px-4 py-2 text-right">PnL ({currency})</th>
+                    <th className="px-4 py-2 text-right">{periodUpper} PnL ({currency})</th>
+                    <th className="px-4 py-2 text-right">Weight</th>
+                    <th className="px-4 py-2 text-left">Symbols</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {summaryIndustry.groups
+                    .slice()
+                    .sort((a, b) => b.total_mtm_reporting - a.total_mtm_reporting)
+                    .map((g) => {
+                      const periodPnl = industryPeriodPnl.get(g.group_key);
+                      const industrySymbols = industryMappings
+                        .filter((m) => m.industry === g.group_key)
+                        .map((m) => m.symbol);
+                      return (
+                        <tr key={g.group_key}>
+                          <td className="px-4 py-2.5 font-medium">{g.group_key}</td>
+                          <td className="px-4 py-2.5 text-right">{fmt(g.total_mtm_reporting)}</td>
+                          <td className={`px-4 py-2.5 text-right ${g.total_pnl_reporting >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {g.total_pnl_reporting >= 0 ? "+" : ""}{fmt(g.total_pnl_reporting)}
+                          </td>
+                          <td className={`px-4 py-2.5 text-right ${periodPnl == null ? "text-gray-400" : periodPnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {periodPnl != null ? `${periodPnl >= 0 ? "+" : ""}${fmt(periodPnl)}` : "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">{g.proportion.toFixed(1)}%</td>
+                          <td className="px-4 py-2.5 text-gray-500 text-xs">
+                            {industrySymbols.join(", ") || "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </section>

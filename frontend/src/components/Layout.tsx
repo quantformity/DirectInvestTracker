@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/summary", label: "Summary", icon: "📈" },
   { to: "/market", label: "Market Insights", icon: "💹" },
   { to: "/history", label: "History", icon: "📅" },
+  { to: "/industry", label: "Industry", icon: "🏭" },
   { to: "/report", label: "Report", icon: "📄" },
 ];
 

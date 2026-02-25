@@ -139,6 +139,19 @@ class HistoryOut(BaseModel):
     points: list[HistoryPoint]
 
 
+# ─── Industry Mapping ────────────────────────────────────────────────────────
+
+class IndustryMappingOut(BaseModel):
+    symbol: str
+    industry: str
+
+    model_config = {"from_attributes": True}
+
+
+class IndustryMappingUpdate(BaseModel):
+    industry: str
+
+
 # ─── AI ──────────────────────────────────────────────────────────────────────
 
 class ChatMessage(BaseModel):

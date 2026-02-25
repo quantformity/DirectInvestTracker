@@ -268,8 +268,13 @@ TABLE: fx_rates
   - rate REAL
   - timestamp DATETIME (UTC)
 
+TABLE: industry_mappings
+  - symbol TEXT PRIMARY KEY (equity ticker, e.g. "AAPL")
+  - industry TEXT (e.g. "Technology", "Financials", "Energy"; default "Unspecified" for unmapped symbols)
+
 RELATIONSHIPS:
 - positions.account_id → accounts.id
+- industry_mappings.symbol → positions.symbol (LEFT JOIN to include unmapped symbols)
 - Use MAX(timestamp) GROUP BY symbol to get latest market_data
 - Use MAX(timestamp) GROUP BY pair to get latest fx_rates
 

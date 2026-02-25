@@ -6,6 +6,7 @@ import { Summary } from "./pages/Summary";
 import { MarketInsights } from "./pages/MarketInsights";
 import { History } from "./pages/History";
 import { Report } from "./pages/Report";
+import { IndustryMappingPage } from "./pages/IndustryMappingPage";
 import { useBackendReady } from "./hooks/useBackendReady";
 
 function statusMessage(elapsed: number): string {
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="summary" element={<Summary />} />
           <Route path="market" element={<MarketInsights />} />
           <Route path="history" element={<History />} />
+          <Route path="industry" element={<IndustryMappingPage />} />
         </Route>
         <Route path="report" element={<Report />} />
       </Routes>
