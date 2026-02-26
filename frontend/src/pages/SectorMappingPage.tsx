@@ -87,6 +87,13 @@ export function SectorMappingPage() {
     }
   };
 
+  // Clear debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceRef.current).forEach(clearTimeout);
+    };
+  }, []);
+
   // Group mappings by sector for the summary panel
   const bySector = mappings.reduce<Record<string, string[]>>((acc, m) => {
     const sec = edits[m.symbol] ?? m.sector;
@@ -98,12 +105,13 @@ export function SectorMappingPage() {
   const sectorsSet = new Set(mappings.map((m) => edits[m.symbol] ?? m.sector));
   const assignedCount = mappings.filter((m) => (edits[m.symbol] ?? m.sector) !== "Unspecified").length;
 
-  // Clear debounce timers on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(debounceRef.current).forEach(clearTimeout);
-    };
-  }, []);
+  // Datalist options: COMMON_SECTORS + any already-assigned custom sectors, deduped & sorted
+  const sectorOptions = [
+    ...new Set([
+      ...COMMON_SECTORS.filter((s) => s !== "Unspecified"),
+      ...mappings.map((m) => m.sector).filter((s) => s !== "Unspecified"),
+    ]),
+  ].sort();
 
   return (
     <div className="p-6">
@@ -144,7 +152,7 @@ export function SectorMappingPage() {
         </div>
       ) : mappings.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-500">
-          <div className="text-4xl">🏭</div>
+          <div className="text-4xl">🗂️</div>
           <div>No positions found. Add positions in the Position Manager first.</div>
         </div>
       ) : (
@@ -188,7 +196,7 @@ export function SectorMappingPage() {
                               placeholder="Unspecified"
                             />
                             <datalist id={`sector-list-${m.symbol}`}>
-                              {COMMON_SECTORS.map((sec) => (
+                              {sectorOptions.map((sec) => (
                                 <option key={sec} value={sec} />
                               ))}
                             </datalist>

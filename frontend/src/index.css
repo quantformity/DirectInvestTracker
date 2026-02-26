@@ -29,3 +29,12 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #4B5563;
 }
+
+/* Prevent Chromium/Electron autofill from overriding input backgrounds */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #111827 inset !important;
+  -webkit-text-fill-color: #f9fafb !important;
+  caret-color: #f9fafb;
+}
