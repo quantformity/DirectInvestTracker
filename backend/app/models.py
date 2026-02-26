@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from sqlalchemy import (
     Integer, String, Float, DateTime, Date, ForeignKey, Enum as SAEnum
 )
@@ -50,7 +50,7 @@ class MarketData(Base):
     pe_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
     change_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     beta: Mapped[float | None] = mapped_column(Float, nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class FxRate(Base):
@@ -59,7 +59,7 @@ class FxRate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     pair: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     rate: Mapped[float] = mapped_column(Float, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class Setting(Base):

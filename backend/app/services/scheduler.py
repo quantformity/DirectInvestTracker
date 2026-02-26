@@ -1,6 +1,6 @@
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -62,7 +62,7 @@ def sync_market_data():
                     pe_ratio=data["pe_ratio"],
                     change_percent=data["change_percent"],
                     beta=data["beta"],
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                 )
                 db.add(row)
             logger.info("Market data synced for %d symbols", len(equity_symbols))
@@ -81,13 +81,13 @@ def sync_market_data():
                 row = FxRate(
                     pair=pair_key,
                     rate=rate,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                 )
                 db.add(row)
             logger.info("FX synced for %d pairs", len(fx_results))
 
         db.commit()
-        logger.info("Scheduler sync complete at %s", datetime.utcnow().isoformat())
+        logger.info("Scheduler sync complete at %s", datetime.now(timezone.utc).isoformat())
     except Exception as exc:
         logger.error("Scheduler sync failed: %s", exc)
         db.rollback()
