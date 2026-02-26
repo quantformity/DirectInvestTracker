@@ -6,7 +6,7 @@ import { Summary } from "./pages/Summary";
 import { MarketInsights } from "./pages/MarketInsights";
 import { History } from "./pages/History";
 import { Report } from "./pages/Report";
-import { IndustryMappingPage } from "./pages/IndustryMappingPage";
+import { SectorMappingPage } from "./pages/SectorMappingPage";
 import { FxMatrixPage } from "./pages/FxMatrix";
 import { useBackendReady } from "./hooks/useBackendReady";
 
@@ -89,7 +89,7 @@ export default function App() {
           <Route path="summary" element={<Summary />} />
           <Route path="market" element={<MarketInsights />} />
           <Route path="history" element={<History />} />
-          <Route path="industry" element={<IndustryMappingPage />} />
+          <Route path="sector" element={<SectorMappingPage />} />
           <Route path="fx" element={<FxMatrixPage />} />
         </Route>
         <Route path="report" element={<Report />} />

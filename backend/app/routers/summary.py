@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Position, Account, MarketData, FxRate, CategoryEnum, IndustryMapping
+from app.models import Position, Account, MarketData, FxRate, CategoryEnum, SectorMapping
 from app.schemas import EnrichedPosition, SummaryGroup, SummaryOut
 
 router = APIRouter()
@@ -112,7 +112,7 @@ def _enrich_positions(
 
 @router.get("/", response_model=SummaryOut)
 def get_summary(
-    group_by: str = Query(default="category", enum=["category", "account", "symbol", "cash_gic", "industry"]),
+    group_by: str = Query(default="category", enum=["category", "account", "symbol", "cash_gic", "sector"]),
     db: Session = Depends(get_db),
 ):
     reporting_currency = os.getenv("REPORTING_CURRENCY", REPORTING_CURRENCY)
@@ -130,10 +130,10 @@ def get_summary(
     for e in enriched:
         e.proportion = (e.mtm_reporting / total_mtm) * 100.0 if total_mtm else 0.0
 
-    # Build industry mapping lookup for industry group_by
-    industry_map: dict[str, str] = {}
-    if group_by == "industry":
-        industry_map = {m.symbol: m.industry for m in db.query(IndustryMapping).all()}
+    # Build sector mapping lookup for sector group_by
+    sector_map: dict[str, str] = {}
+    if group_by == "sector":
+        sector_map = {m.symbol: m.sector for m in db.query(SectorMapping).all()}
 
     # Build groups
     group_map: dict[str, dict] = {}
@@ -144,8 +144,8 @@ def get_summary(
             key = e.account_name
         elif group_by == "symbol":
             key = e.symbol
-        elif group_by == "industry":
-            key = industry_map.get(e.symbol, "Unspecified")
+        elif group_by == "sector":
+            key = sector_map.get(e.symbol, "Unspecified")
         else:  # cash_gic
             key = "GIC/Cash" if e.category in (CategoryEnum.GIC, CategoryEnum.Cash) else "Other"
 

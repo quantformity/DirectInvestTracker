@@ -140,17 +140,17 @@ class HistoryOut(BaseModel):
     points: list[HistoryPoint]
 
 
-# ─── Industry Mapping ────────────────────────────────────────────────────────
+# ─── Sector Mapping ──────────────────────────────────────────────────────────
 
-class IndustryMappingOut(BaseModel):
+class SectorMappingOut(BaseModel):
     symbol: str
-    industry: str
+    sector: str
 
     model_config = {"from_attributes": True}
 
 
-class IndustryMappingUpdate(BaseModel):
-    industry: str
+class SectorMappingUpdate(BaseModel):
+    sector: str
 
 
 # ─── AI ──────────────────────────────────────────────────────────────────────

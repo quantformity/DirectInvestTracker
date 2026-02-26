@@ -15,7 +15,7 @@ const GROUP_TYPES = [
   { key: "account",  label: "By Account" },
   { key: "symbol",   label: "By Symbol" },
   { key: "cash_gic", label: "Cash / GIC vs Other" },
-  { key: "industry", label: "By Industry" },
+  { key: "sector",   label: "By Sector" },
 ] as const;
 
 type GroupKey = (typeof GROUP_TYPES)[number]["key"];

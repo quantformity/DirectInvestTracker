@@ -8,7 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
-import { api, type SummaryOut, type HistoryPoint, type MarketData, type ReportSummaryResponse, type IndustryMapping } from "../api/client";
+import { api, type SummaryOut, type HistoryPoint, type MarketData, type ReportSummaryResponse, type SectorMapping } from "../api/client";
 
 // ── Period helpers ────────────────────────────────────────────────────────────
 
@@ -199,8 +199,8 @@ export function Report() {
   const [summaryAcct,    setSummaryAcct]    = useState<SummaryOut | null>(null);
   const [summarySym,     setSummarySym]     = useState<SummaryOut | null>(null);
   const [summaryCashGic, setSummaryCashGic] = useState<SummaryOut | null>(null);
-  const [summaryIndustry, setSummaryIndustry] = useState<SummaryOut | null>(null);
-  const [industryMappings, setIndustryMappings] = useState<IndustryMapping[]>([]);
+  const [summarySector, setSummarySector] = useState<SummaryOut | null>(null);
+  const [sectorMappings, setSectorMappings] = useState<SectorMapping[]>([]);
   const [marketData,     setMarketData]     = useState<MarketData[]>([]);
   const [allHistory,      setAllHistory]      = useState<HistoryPoint[]>([]);
   const [symbolHistories, setSymbolHistories] = useState<Map<string, HistoryPoint[]>>(new Map());
@@ -216,22 +216,22 @@ export function Report() {
   useEffect(() => {
     async function load() {
       try {
-        const [cat, acct, sym, cashGic, industry, md, hist, industryMaps] = await Promise.all([
+        const [cat, acct, sym, cashGic, sector, md, hist, sectorMaps] = await Promise.all([
           api.getSummary("category"),
           api.getSummary("account"),
           api.getSummary("symbol"),
           api.getSummary("cash_gic"),
-          api.getSummary("industry"),
+          api.getSummary("sector"),
           api.getMarketData(),
           api.getAggregateHistory(undefined, false),
-          api.getIndustryMappings(),
+          api.getSectorMappings(),
         ]);
         setSummaryCat(cat);
         setSummaryAcct(acct);
         setSummarySym(sym);
         setSummaryCashGic(cashGic);
-        setSummaryIndustry(industry);
-        setIndustryMappings(industryMaps);
+        setSummarySector(sector);
+        setSectorMappings(sectorMaps);
         setMarketData(md);
         setAllHistory(hist.points);
 
@@ -369,17 +369,17 @@ export function Report() {
     return result;
   }, [positions, positionPeriodPnl]);
 
-  // Aggregate period PnL by industry (symbol-level rollup via industryMappings)
-  const industryPeriodPnl = useMemo<Map<string, number>>(() => {
-    const indMap: Record<string, string> = {};
-    industryMappings.forEach((m) => { indMap[m.symbol] = m.industry; });
+  // Aggregate period PnL by sector (symbol-level rollup via sectorMappings)
+  const sectorPeriodPnl = useMemo<Map<string, number>>(() => {
+    const secMap: Record<string, string> = {};
+    sectorMappings.forEach((m) => { secMap[m.symbol] = m.sector; });
     const result = new Map<string, number>();
     symbolPeriodPnl.forEach((pnl, sym) => {
-      const ind = indMap[sym] ?? "Unspecified";
-      result.set(ind, (result.get(ind) ?? 0) + pnl);
+      const sec = secMap[sym] ?? "Unspecified";
+      result.set(sec, (result.get(sec) ?? 0) + pnl);
     });
     return result;
-  }, [symbolPeriodPnl, industryMappings]);
+  }, [symbolPeriodPnl, sectorMappings]);
 
   const handleDownloadPDF = async () => {
     setSaving(true);
@@ -679,8 +679,8 @@ export function Report() {
                 {summaryAcct    && <ReportPieChart title="By Account"           groups={summaryAcct.groups}    currency={currency} />}
                 {summarySym     && <ReportPieChart title="By Symbol"            groups={summarySym.groups}     currency={currency} />}
                 {summaryCashGic && <ReportPieChart title="Cash / GIC vs Other"  groups={summaryCashGic.groups} currency={currency} />}
-                {summaryIndustry && summaryIndustry.groups.length > 0 && (
-                  <ReportPieChart title="By Industry" groups={summaryIndustry.groups} currency={currency} />
+                {summarySector && summarySector.groups.length > 0 && (
+                  <ReportPieChart title="By Sector" groups={summarySector.groups} currency={currency} />
                 )}
               </div>
             </section>
@@ -826,18 +826,18 @@ export function Report() {
             </section>
           )}
 
-          {/* ── Industry Analysis ──────────────────────────────────────────── */}
-          {summaryIndustry && summaryIndustry.groups.length > 0 && (
+          {/* ── Sector Analysis ────────────────────────────────────────────── */}
+          {summarySector && summarySector.groups.length > 0 && (
             <section className="mb-10">
-              <h2 className="text-lg font-semibold mb-4 text-gray-800">Industry Analysis</h2>
+              <h2 className="text-lg font-semibold mb-4 text-gray-800">Sector Analysis</h2>
 
               {/* Period PnL bar chart */}
-              {industryPeriodPnl.size > 0 && (
+              {sectorPeriodPnl.size > 0 && (
                 <div className="mb-4">
                   <ReportBarChart
-                    title={`${periodUpper} PnL by Industry`}
-                    data={[...industryPeriodPnl.entries()]
-                      .map(([ind, value]) => ({ symbol: ind, value }))
+                    title={`${periodUpper} PnL by Sector`}
+                    data={[...sectorPeriodPnl.entries()]
+                      .map(([sec, value]) => ({ symbol: sec, value }))
                       .sort((a, b) => b.value - a.value)}
                     currency={currency}
                     colorPositive="#22c55e"
@@ -846,11 +846,11 @@ export function Report() {
                 </div>
               )}
 
-              {/* Holdings by industry table */}
+              {/* Holdings by sector table */}
               <table className="w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
                 <thead className="bg-gray-100 text-gray-600 text-xs uppercase">
                   <tr>
-                    <th className="px-4 py-2 text-left">Industry</th>
+                    <th className="px-4 py-2 text-left">Sector</th>
                     <th className="px-4 py-2 text-right">MTM ({currency})</th>
                     <th className="px-4 py-2 text-right">PnL ({currency})</th>
                     <th className="px-4 py-2 text-right">{periodUpper} PnL ({currency})</th>
@@ -859,13 +859,13 @@ export function Report() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {summaryIndustry.groups
+                  {summarySector.groups
                     .slice()
                     .sort((a, b) => b.total_mtm_reporting - a.total_mtm_reporting)
                     .map((g) => {
-                      const periodPnl = industryPeriodPnl.get(g.group_key);
-                      const industrySymbols = industryMappings
-                        .filter((m) => m.industry === g.group_key)
+                      const periodPnl = sectorPeriodPnl.get(g.group_key);
+                      const sectorSymbols = sectorMappings
+                        .filter((m) => m.sector === g.group_key)
                         .map((m) => m.symbol);
                       return (
                         <tr key={g.group_key}>
@@ -879,7 +879,7 @@ export function Report() {
                           </td>
                           <td className="px-4 py-2.5 text-right">{g.proportion.toFixed(1)}%</td>
                           <td className="px-4 py-2.5 text-gray-500 text-xs">
-                            {industrySymbols.join(", ") || "—"}
+                            {sectorSymbols.join(", ") || "—"}
                           </td>
                         </tr>
                       );

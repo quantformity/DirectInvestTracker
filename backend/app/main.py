@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.services.scheduler import start_scheduler, shutdown_scheduler
-from app.routers import accounts, positions, market_data, fx_rates, summary, history, ai, settings, industry
+from app.routers import accounts, positions, market_data, fx_rates, summary, history, ai, settings, sector
 
 
 def _read_version() -> str:
@@ -65,7 +65,7 @@ app.include_router(summary.router, prefix="/summary", tags=["Summary"])
 app.include_router(history.router, prefix="/history", tags=["History"])
 app.include_router(ai.router, prefix="/ai", tags=["AI"])
 app.include_router(settings.router, prefix="/settings", tags=["Settings"])
-app.include_router(industry.router, prefix="/industry", tags=["Industry"])
+app.include_router(sector.router, prefix="/sector", tags=["Sector"])
 
 
 @app.get("/", tags=["Health"])

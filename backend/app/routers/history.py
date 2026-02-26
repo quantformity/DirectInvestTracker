@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Position, Account, CategoryEnum, FxRate, IndustryMapping
+from app.models import Position, Account, CategoryEnum, FxRate, SectorMapping
 from app.schemas import HistoryOut, HistoryPoint
 from app.services.yahoo_finance import fetch_history
 from app.services import history_cache
@@ -227,28 +227,28 @@ def get_aggregate_history(
     return HistoryOut(symbol=label, account_id=account_id, points=points)
 
 
-@router.get("/industry", response_model=HistoryOut)
-def get_history_by_industry(
-    industry: str = Query(..., description="Industry name to aggregate"),
+@router.get("/sector", response_model=HistoryOut)
+def get_history_by_sector(
+    sector: str = Query(..., description="Sector name to aggregate"),
     use_cache: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     """
-    Aggregate historical PnL/MTM for all equity positions belonging to a specific industry.
-    Industry assignments come from the industry_mappings table.
+    Aggregate historical PnL/MTM for all equity positions belonging to a specific sector.
+    Sector assignments come from the sector_mappings table.
     Symbols without a mapping are treated as 'Unspecified'.
     """
     reporting_currency = os.getenv("REPORTING_CURRENCY", "CAD").upper()
 
-    mappings = {m.symbol: m.industry for m in db.query(IndustryMapping).all()}
+    mappings = {m.symbol: m.sector for m in db.query(SectorMapping).all()}
 
     all_equity = db.query(Position).filter(Position.category == CategoryEnum.Equity).all()
-    positions = [p for p in all_equity if mappings.get(p.symbol, "Unspecified") == industry]
+    positions = [p for p in all_equity if mappings.get(p.symbol, "Unspecified") == sector]
 
     if not positions:
         raise HTTPException(
             status_code=404,
-            detail=f"No equity positions found for industry '{industry}'"
+            detail=f"No equity positions found for sector '{sector}'"
         )
 
     accounts = {a.id: a for a in db.query(Account).all()}
@@ -260,14 +260,14 @@ def get_history_by_industry(
 
     if not combined:
         if use_cache:
-            return HistoryOut(symbol=industry, account_id=None, points=[])
+            return HistoryOut(symbol=sector, account_id=None, points=[])
         raise HTTPException(status_code=503, detail="Could not fetch historical data")
 
     points = [
         HistoryPoint(date=dt, close_price=0.0, pnl=v["pnl"], mtm=v["mtm"], cash_gic=0.0)
         for dt, v in sorted(combined.items())
     ]
-    return HistoryOut(symbol=industry, account_id=None, points=points)
+    return HistoryOut(symbol=sector, account_id=None, points=points)
 
 
 @router.get("/", response_model=HistoryOut)

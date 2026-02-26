@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { api, type IndustryMapping } from "../api/client";
+import { api, type SectorMapping } from "../api/client";
 
-const COMMON_INDUSTRIES = [
+const COMMON_SECTORS = [
   "Communication Services",
   "Consumer Discretionary",
   "Consumer Staples",
@@ -16,8 +16,8 @@ const COMMON_INDUSTRIES = [
   "Unspecified",
 ];
 
-export function IndustryMappingPage() {
-  const [mappings, setMappings] = useState<IndustryMapping[]>([]);
+export function SectorMappingPage() {
+  const [mappings, setMappings] = useState<SectorMapping[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
   const [saving, setSaving]     = useState<Record<string, boolean>>({});
@@ -26,15 +26,15 @@ export function IndustryMappingPage() {
   const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    api.getIndustryMappings()
+    api.getSectorMappings()
       .then((data) => {
         setMappings(data);
         // Seed edits state
         const init: Record<string, string> = {};
-        data.forEach((m) => { init[m.symbol] = m.industry; });
+        data.forEach((m) => { init[m.symbol] = m.sector; });
         setEdits(init);
       })
-      .catch(() => setError("Failed to load industry mappings — is the backend running?"))
+      .catch(() => setError("Failed to load sector mappings — is the backend running?"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -43,19 +43,19 @@ export function IndustryMappingPage() {
   };
 
   const handleSave = async (symbol: string) => {
-    const industry = edits[symbol] ?? "Unspecified";
+    const sector = edits[symbol] ?? "Unspecified";
     // Skip if unchanged
     const current = mappings.find((m) => m.symbol === symbol);
-    if (current?.industry === industry) return;
+    if (current?.sector === sector) return;
 
     setSaving((prev) => ({ ...prev, [symbol]: true }));
     try {
-      const updated = await api.upsertIndustryMapping(symbol, industry);
+      const updated = await api.upsertSectorMapping(symbol, sector);
       setMappings((prev) =>
         prev.map((m) => (m.symbol === symbol ? updated : m))
       );
     } catch {
-      setError(`Failed to save industry for ${symbol}.`);
+      setError(`Failed to save sector for ${symbol}.`);
     } finally {
       setSaving((prev) => ({ ...prev, [symbol]: false }));
     }
@@ -64,13 +64,13 @@ export function IndustryMappingPage() {
   const handleReset = async (symbol: string) => {
     setSaving((prev) => ({ ...prev, [symbol]: true }));
     try {
-      await api.deleteIndustryMapping(symbol);
+      await api.deleteSectorMapping(symbol);
       setMappings((prev) =>
-        prev.map((m) => (m.symbol === symbol ? { ...m, industry: "Unspecified" } : m))
+        prev.map((m) => (m.symbol === symbol ? { ...m, sector: "Unspecified" } : m))
       );
       setEdits((prev) => ({ ...prev, [symbol]: "Unspecified" }));
     } catch {
-      setError(`Failed to reset industry for ${symbol}.`);
+      setError(`Failed to reset sector for ${symbol}.`);
     } finally {
       setSaving((prev) => ({ ...prev, [symbol]: false }));
     }
@@ -82,21 +82,21 @@ export function IndustryMappingPage() {
       e.currentTarget.blur();
     } else if (e.key === "Escape") {
       const current = mappings.find((m) => m.symbol === symbol);
-      setEdits((prev) => ({ ...prev, [symbol]: current?.industry ?? "Unspecified" }));
+      setEdits((prev) => ({ ...prev, [symbol]: current?.sector ?? "Unspecified" }));
       e.currentTarget.blur();
     }
   };
 
-  // Group mappings by industry for the summary panel
-  const byIndustry = mappings.reduce<Record<string, string[]>>((acc, m) => {
-    const ind = edits[m.symbol] ?? m.industry;
-    if (!acc[ind]) acc[ind] = [];
-    acc[ind].push(m.symbol);
+  // Group mappings by sector for the summary panel
+  const bySector = mappings.reduce<Record<string, string[]>>((acc, m) => {
+    const sec = edits[m.symbol] ?? m.sector;
+    if (!acc[sec]) acc[sec] = [];
+    acc[sec].push(m.symbol);
     return acc;
   }, {});
 
-  const industriesSet = new Set(mappings.map((m) => edits[m.symbol] ?? m.industry));
-  const assignedCount = mappings.filter((m) => (edits[m.symbol] ?? m.industry) !== "Unspecified").length;
+  const sectorsSet = new Set(mappings.map((m) => edits[m.symbol] ?? m.sector));
+  const assignedCount = mappings.filter((m) => (edits[m.symbol] ?? m.sector) !== "Unspecified").length;
 
   // Clear debounce timers on unmount
   useEffect(() => {
@@ -109,9 +109,9 @@ export function IndustryMappingPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Industry Mapping</h1>
+          <h1 className="text-2xl font-bold text-white">Sector Mapping</h1>
           <p className="text-sm text-gray-400 mt-1">
-            Assign an industry to each symbol. Changes are saved automatically on blur.
+            Assign a sector to each symbol. Changes are saved automatically on blur.
           </p>
         </div>
         <div className="flex gap-4 text-sm text-right">
@@ -124,9 +124,9 @@ export function IndustryMappingPage() {
             <div className="text-white font-semibold text-lg">{assignedCount}</div>
           </div>
           <div>
-            <div className="text-gray-400">Industries</div>
+            <div className="text-gray-400">Sectors</div>
             <div className="text-white font-semibold text-lg">
-              {[...industriesSet].filter((i) => i !== "Unspecified").length}
+              {[...sectorsSet].filter((s) => s !== "Unspecified").length}
             </div>
           </div>
         </div>
@@ -156,14 +156,14 @@ export function IndustryMappingPage() {
                 <thead className="text-gray-400 text-xs uppercase bg-gray-700/30">
                   <tr>
                     <th className="px-4 py-3 text-left">Symbol</th>
-                    <th className="px-4 py-3 text-left">Industry</th>
+                    <th className="px-4 py-3 text-left">Sector</th>
                     <th className="px-4 py-3 text-center w-20">Reset</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700/50">
                   {mappings.map((m) => {
-                    const currentEdit = edits[m.symbol] ?? m.industry;
-                    const isDirty = currentEdit !== m.industry;
+                    const currentEdit = edits[m.symbol] ?? m.sector;
+                    const isDirty = currentEdit !== m.sector;
                     const isSaving = saving[m.symbol];
 
                     return (
@@ -179,7 +179,7 @@ export function IndustryMappingPage() {
                               onChange={(e) => handleChange(m.symbol, e.target.value)}
                               onBlur={() => handleSave(m.symbol)}
                               onKeyDown={(e) => handleKeyDown(e, m.symbol)}
-                              list={`industry-list-${m.symbol}`}
+                              list={`sector-list-${m.symbol}`}
                               className={`bg-gray-900 border rounded px-2 py-1 text-white text-sm w-full max-w-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                                 isDirty
                                   ? "border-yellow-500/60"
@@ -187,9 +187,9 @@ export function IndustryMappingPage() {
                               }`}
                               placeholder="Unspecified"
                             />
-                            <datalist id={`industry-list-${m.symbol}`}>
-                              {COMMON_INDUSTRIES.map((ind) => (
-                                <option key={ind} value={ind} />
+                            <datalist id={`sector-list-${m.symbol}`}>
+                              {COMMON_SECTORS.map((sec) => (
+                                <option key={sec} value={sec} />
                               ))}
                             </datalist>
                             {isSaving && (
@@ -200,7 +200,7 @@ export function IndustryMappingPage() {
                           </div>
                         </td>
                         <td className="px-4 py-2.5 text-center">
-                          {m.industry !== "Unspecified" ? (
+                          {m.sector !== "Unspecified" ? (
                             <button
                               onClick={() => handleReset(m.symbol)}
                               disabled={isSaving}
@@ -220,27 +220,27 @@ export function IndustryMappingPage() {
               </table>
             </div>
             <p className="mt-2 text-xs text-gray-600">
-              Click an industry cell to edit · Press Enter or click away to save · Press Esc to cancel
+              Click a sector cell to edit · Press Enter or click away to save · Press Esc to cancel
             </p>
           </div>
 
-          {/* Industry summary panel */}
+          {/* Sector summary panel */}
           <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden self-start">
             <div className="px-4 py-3 border-b border-gray-700 bg-gray-700/30">
-              <h3 className="font-semibold text-gray-200 text-sm">Industry Summary</h3>
+              <h3 className="font-semibold text-gray-200 text-sm">Sector Summary</h3>
             </div>
             <div className="p-4 space-y-3">
-              {Object.entries(byIndustry)
+              {Object.entries(bySector)
                 .sort(([a], [b]) => {
                   if (a === "Unspecified") return 1;
                   if (b === "Unspecified") return -1;
                   return a.localeCompare(b);
                 })
-                .map(([industry, symbols]) => (
-                  <div key={industry}>
+                .map(([sector, symbols]) => (
+                  <div key={sector}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className={`text-sm font-medium ${industry === "Unspecified" ? "text-gray-500" : "text-gray-200"}`}>
-                        {industry}
+                      <span className={`text-sm font-medium ${sector === "Unspecified" ? "text-gray-500" : "text-gray-200"}`}>
+                        {sector}
                       </span>
                       <span className="text-xs text-gray-500 bg-gray-700 px-1.5 py-0.5 rounded">
                         {symbols.length}
@@ -251,7 +251,7 @@ export function IndustryMappingPage() {
                         <span
                           key={sym}
                           className={`text-xs px-1.5 py-0.5 rounded ${
-                            industry === "Unspecified"
+                            sector === "Unspecified"
                               ? "bg-gray-700 text-gray-500"
                               : "bg-blue-900/50 text-blue-300"
                           }`}

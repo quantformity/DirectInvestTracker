@@ -9,18 +9,18 @@ const fmt = (n: number, decimals = 2) =>
 
 const columnHelper = createColumnHelper<EnrichedPosition>();
 
-function makeColumns(industryMap: Record<string, string>): ColumnDef<EnrichedPosition, unknown>[] {
+function makeColumns(sectorMap: Record<string, string>): ColumnDef<EnrichedPosition, unknown>[] {
   return [
     columnHelper.accessor("symbol", { header: "Symbol", cell: (i) => <span className="font-semibold text-white">{i.getValue()}</span> }),
     columnHelper.accessor("category", { header: "Category" }),
     columnHelper.display({
-      id: "industry",
-      header: "Industry",
+      id: "sector",
+      header: "Sector",
       cell: ({ row }) => {
-        const ind = industryMap[row.original.symbol] ?? "Unspecified";
+        const sec = sectorMap[row.original.symbol] ?? "Unspecified";
         return (
-          <span className={ind === "Unspecified" ? "text-gray-500 text-xs" : "text-purple-300 text-xs"}>
-            {ind}
+          <span className={sec === "Unspecified" ? "text-gray-500 text-xs" : "text-purple-300 text-xs"}>
+            {sec}
           </span>
         );
       },
@@ -67,7 +67,7 @@ export function PositionList() {
   const { reportingCurrency } = useSettingsStore();
   const [data, setData] = useState<EnrichedPosition[]>([]);
   const [totals, setTotals] = useState({ mtm: 0, pnl: 0, currency: "CAD" });
-  const [industryMap, setIndustryMap] = useState<Record<string, string>>({});
+  const [sectorMap, setSectorMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -75,7 +75,7 @@ export function PositionList() {
     try {
       const [summary, mappings] = await Promise.all([
         api.getSummary(),
-        api.getIndustryMappings(),
+        api.getSectorMappings(),
       ]);
       setData(summary.positions);
       setTotals({
@@ -84,8 +84,8 @@ export function PositionList() {
         currency: summary.reporting_currency,
       });
       const map: Record<string, string> = {};
-      mappings.forEach((m) => { map[m.symbol] = m.industry; });
-      setIndustryMap(map);
+      mappings.forEach((m) => { map[m.symbol] = m.sector; });
+      setSectorMap(map);
       setError("");
     } catch {
       setError("Failed to load positions — is the backend running?");
@@ -100,7 +100,7 @@ export function PositionList() {
     return () => clearInterval(interval);
   }, [fetch]);
 
-  const columns = useMemo(() => makeColumns(industryMap), [industryMap]);
+  const columns = useMemo(() => makeColumns(sectorMap), [sectorMap]);
 
   return (
     <div className="p-6">

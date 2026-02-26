@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Position, Account, CategoryEnum, IndustryMapping
+from app.models import Position, Account, CategoryEnum, SectorMapping
 from app.schemas import (
     ChatRequest, ChatResponse, ChartRequest, ChartResponse,
     ActionRequest, ActionPlan, ExecuteActionRequest, ExecuteActionResponse,
@@ -161,18 +161,18 @@ def _build_portfolio_context(db: Session) -> str:
         for pair, rate in fx_rates.items():
             lines.append(f"  {pair}: {rate:.6f}")
 
-    # Industry mappings (only if any are set)
-    industry_mappings = db.query(IndustryMapping).all()
-    if industry_mappings:
-        industry_map = {m.symbol: m.industry for m in industry_mappings}
-        # Group symbols by industry
+    # Sector mappings (only if any are set)
+    sector_mappings = db.query(SectorMapping).all()
+    if sector_mappings:
+        sector_map = {m.symbol: m.sector for m in sector_mappings}
+        # Group symbols by sector
         from collections import defaultdict
-        by_industry: dict[str, list[str]] = defaultdict(list)
-        for sym, ind in sorted(industry_map.items()):
-            by_industry[ind].append(sym)
-        lines.append("\nINDUSTRY MAPPINGS:")
-        for ind, syms in sorted(by_industry.items()):
-            lines.append(f"  {ind}: {', '.join(syms)}")
+        by_sector: dict[str, list[str]] = defaultdict(list)
+        for sym, sec in sorted(sector_map.items()):
+            by_sector[sec].append(sym)
+        lines.append("\nSECTOR MAPPINGS:")
+        for sec, syms in sorted(by_sector.items()):
+            lines.append(f"  {sec}: {', '.join(syms)}")
 
     return "\n".join(lines)
 

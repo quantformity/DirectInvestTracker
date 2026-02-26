@@ -46,6 +46,17 @@ def _migrate():
             conn.execute(text("ALTER TABLE market_data ADD COLUMN company_name VARCHAR(200)"))
             conn.commit()
 
+        # Migrate industry_mappings → sector_mappings (rename + column rename)
+        tables = [row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()]
+        if "industry_mappings" in tables:
+            # sector_mappings is already created by create_all above
+            conn.execute(text(
+                "INSERT OR IGNORE INTO sector_mappings (symbol, sector) "
+                "SELECT symbol, industry FROM industry_mappings"
+            ))
+            conn.execute(text("DROP TABLE industry_mappings"))
+            conn.commit()
+
 
 def _load_settings():
     """Restore persisted AI provider config from the settings table into the live config dict."""
