@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
-import { api, type MarketData, type EnrichedPosition, type SummaryOut } from "../api/client";
+import { api, type MarketData, type EnrichedPosition, type SummaryOut, type SectorMapping } from "../api/client";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -95,10 +95,12 @@ function MarketCard({
   data,
   positions,
   reportingCurrency,
+  sector,
 }: {
   data: MarketData;
   positions: EnrichedPosition[];
   reportingCurrency: string;
+  sector: string;
 }) {
   const change = data.change_percent ?? 0;
   const totalMtm = positions.reduce((s, p) => s + p.mtm_reporting, 0);
@@ -114,6 +116,11 @@ function MarketCard({
           <div className="font-bold text-white text-lg">{data.symbol}</div>
           {data.company_name && (
             <div className="text-gray-400 text-xs mt-0.5 leading-tight">{data.company_name}</div>
+          )}
+          {sector !== "Unspecified" && (
+            <div className="mt-1">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300">{sector}</span>
+            </div>
           )}
           <div className="text-gray-600 text-xs mt-0.5">
             {new Date(data.timestamp).toLocaleString()}
@@ -165,15 +172,23 @@ function MarketCard({
 export function MarketInsights() {
   const [marketData, setMarketData] = useState<MarketData[]>([]);
   const [summary, setSummary]       = useState<SummaryOut | null>(null);
+  const [sectorMap, setSectorMap]   = useState<Record<string, string>>({});
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState("");
 
   const fetchData = useCallback(async () => {
     try {
-      const [md, sum] = await Promise.all([api.getMarketData(), api.getSummary()]);
+      const [md, sum, sectors] = await Promise.all([
+        api.getMarketData(),
+        api.getSummary(),
+        api.getSectorMappings(),
+      ]);
       setMarketData(md);
       setSummary(sum);
+      const map: Record<string, string> = {};
+      sectors.forEach((s: SectorMapping) => { map[s.symbol] = s.sector; });
+      setSectorMap(map);
       setError("");
     } catch {
       setError("Failed to load market data — is the backend running?");
@@ -379,6 +394,7 @@ export function MarketInsights() {
                 data={md}
                 positions={getPositions(md.symbol)}
                 reportingCurrency={reportingCurrency}
+                sector={sectorMap[md.symbol] ?? "Unspecified"}
               />
             ))}
           </div>
