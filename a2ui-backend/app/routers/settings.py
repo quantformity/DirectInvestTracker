@@ -94,24 +94,22 @@ class AISettings(BaseModel):
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+def _to_response(rows: dict[str, str]) -> AISettings:
+    data = {k: rows.get(k, _DEFAULTS.get(k, "")) for k in _SETTING_KEYS}
+    data["db_path"] = os.path.abspath(_DB_PATH)
+    return AISettings(**data)
+
+
 @router.get("/", response_model=AISettings)
 def get_settings():
-    rows = _read_settings()
-    return AISettings(
-        **{k: rows.get(k, _DEFAULTS.get(k, "")) for k in AISettings.model_fields},
-        db_path=os.path.abspath(_DB_PATH),
-    )
+    return _to_response(_read_settings())
 
 
 @router.put("/", response_model=AISettings)
 def update_settings(payload: AISettings):
     data = {k: v for k, v in payload.model_dump().items() if k in _SETTING_KEYS}
     _write_settings(data)
-    rows = _read_settings()
-    return AISettings(
-        **{k: rows.get(k, _DEFAULTS.get(k, "")) for k in AISettings.model_fields},
-        db_path=os.path.abspath(_DB_PATH),
-    )
+    return _to_response(_read_settings())
 
 
 @router.get("/ollama-models")
