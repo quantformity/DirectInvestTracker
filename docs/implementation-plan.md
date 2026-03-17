@@ -421,8 +421,7 @@ Each tool must have tests for:
 |---|---|---|
 | `POST /chat` | SSE stream | User message in → A2UI messages out (streamed) |
 | `POST /action` | JSON | Receives `userAction` from frontend → sends to LLM → returns A2UI response |
-| `GET /surfaces` | JSON | Returns surface history list (from SQLite) |
-| `POST /surfaces` | JSON | Persists a completed surface to SQLite |
+| `GET /surfaces` | JSON | Returns surface history list |
 | `GET /settings` | JSON | Returns current LLM config |
 | `POST /settings` | JSON | Updates LLM config (same `settings` table) |
 
@@ -497,8 +496,7 @@ Renderer:  <PositionsTable data={dataModel["/positions/rows"]} />
 ### Surface history
 - Each completed surface stored in Zustand with: `{ id, title, timestamp, snapshot }`
 - Clicking a history item re-renders the surface from snapshot (no new LLM call)
-- Surfaces persist to SQLite (`surface_history` table in `investments.db`) for durability across reinstalls
-- A2UI backend exposes `GET /surfaces` and `POST /surfaces` to read/write history
+- Surfaces persist to `localStorage` in Electron for cross-session history
 
 ---
 
@@ -542,6 +540,6 @@ Phase 5 can be drafted during Phase 2.
 | # | Question | Resolution |
 |---|---|---|
 | 1 | Report HTML rendering | `<iframe>` inside the A2UI surface (isolated styles) |
-| 2 | Surface history persistence | SQLite `surface_history` table (durable, survives reinstalls) |
+| 2 | Surface history persistence | `localStorage` in Electron (simple, per-machine) |
 | 3 | A2UI backend port | **10201** (not a well-known protocol port) |
 | 4 | Skills files packaging | Embedded at build time (self-contained binary) |
