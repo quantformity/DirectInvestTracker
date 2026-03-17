@@ -3,7 +3,7 @@
  * The A2UI backend reads the same settings, so saving here affects both.
  */
 
-const BACKEND = "http://localhost:8000";
+const BACKEND = "http://localhost:10201";
 
 export type AIProvider = "ollama" | "lmstudio" | "gemini" | "claude" | "llamacpp";
 

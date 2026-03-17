@@ -126,7 +126,7 @@ export function AISettingsPanel() {
 
         setForm(s);
       })
-      .catch(() => setLoadError("Cannot reach backend on :8000 — is the existing app running?"));
+      .catch(() => setLoadError("Cannot reach A2UI backend on :10201 — run scripts/dev-a2ui.sh first."));
   }, []);
 
   const clearModels = () => { setLocalModels([]); setProbeError(null); };
