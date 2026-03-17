@@ -122,6 +122,19 @@ sector_mappings                settings
 
 ---
 
+### `surface_history`
+
+Stores the A2UI surface history for the A2UI app. Written by the A2UI backend (port 10201), not the existing backend.
+
+| Column | Type | Constraints | Default | Description |
+|---|---|---|---|---|
+| `id` | VARCHAR(36) | PK | — | UUID surface ID |
+| `title` | VARCHAR(200) | NOT NULL | — | Display title (derived from first Text component) |
+| `snapshot` | TEXT | NOT NULL | — | Full A2UI surface JSON snapshot |
+| `created_at` | DATETIME (TZ) | NOT NULL | `now(UTC)` | When the surface was created |
+
+---
+
 ## Migrations
 
 Schema changes are handled by `_migrate()` in `database.py`, which runs at startup after `create_all()`. It uses SQLite `PRAGMA table_info` to check for missing columns before altering.

@@ -172,7 +172,7 @@ investments/
 | CLI framework | Python + **Typer** | Reuses existing SQLAlchemy models, yfinance service; type-safe CLI |
 | CLI tests | **pytest** + in-memory SQLite | Isolated, fast, no real DB needed |
 | Yahoo Finance mock | `pytest-mock` / `unittest.mock` | Prevents network calls in tests |
-| A2UI backend | **FastAPI** (new instance, port 8001) | Same stack as existing backend; SSE streaming built-in |
+| A2UI backend | **FastAPI** (new instance, port 10201) | Same stack as existing backend; SSE streaming built-in |
 | LLM integration | Same Ollama/Gemini/Claude adapters | Reads from shared `settings` table in SQLite |
 | A2UI frontend | **React + TypeScript + Vite + Electron** | Same stack as existing frontend |
 | State management | **Zustand** | Already a dependency in existing frontend |
@@ -421,7 +421,8 @@ Each tool must have tests for:
 |---|---|---|
 | `POST /chat` | SSE stream | User message in → A2UI messages out (streamed) |
 | `POST /action` | JSON | Receives `userAction` from frontend → sends to LLM → returns A2UI response |
-| `GET /surfaces` | JSON | Returns surface history list |
+| `GET /surfaces` | JSON | Returns surface history list (from SQLite) |
+| `POST /surfaces` | JSON | Persists a completed surface to SQLite |
 | `GET /settings` | JSON | Returns current LLM config |
 | `POST /settings` | JSON | Updates LLM config (same `settings` table) |
 
@@ -496,7 +497,8 @@ Renderer:  <PositionsTable data={dataModel["/positions/rows"]} />
 ### Surface history
 - Each completed surface stored in Zustand with: `{ id, title, timestamp, snapshot }`
 - Clicking a history item re-renders the surface from snapshot (no new LLM call)
-- Surfaces persist to `localStorage` for cross-session history
+- Surfaces persist to SQLite (`surface_history` table in `investments.db`) for durability across reinstalls
+- A2UI backend exposes `GET /surfaces` and `POST /surfaces` to read/write history
 
 ---
 
@@ -504,7 +506,7 @@ Renderer:  <PositionsTable data={dataModel["/positions/rows"]} />
 
 ### `scripts/dev-a2ui.sh`
 ```bash
-# Starts a2ui-backend (:8001) + a2ui-frontend (Vite + Electron)
+# Starts a2ui-backend (:10201) + a2ui-frontend (Vite + Electron)
 ```
 
 ### End-to-end smoke test checklist
@@ -535,9 +537,11 @@ Phase 5 can be drafted during Phase 2.
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-1. **Report HTML display** — should the A2UI frontend render the report HTML inside an `<iframe>` within a surface, or inline? Inline is simpler but risks style conflicts.
-2. **Surface history persistence** — `localStorage` for history thumbnails is good for single-machine use. If the app is used across multiple machines, should history be stored in the `settings` table in SQLite?
-3. **A2UI backend port** — port `8001` assumed. Confirm no conflict with other local services.
-4. **Skills loading** — should skills `*.md` files be embedded in the a2ui-backend binary at build time, or read from disk at runtime (easier to update without rebuild)?
+| # | Question | Resolution |
+|---|---|---|
+| 1 | Report HTML rendering | `<iframe>` inside the A2UI surface (isolated styles) |
+| 2 | Surface history persistence | SQLite `surface_history` table (durable, survives reinstalls) |
+| 3 | A2UI backend port | **10201** (not a well-known protocol port) |
+| 4 | Skills files packaging | Embedded at build time (self-contained binary) |
