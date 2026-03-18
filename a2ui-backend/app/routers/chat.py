@@ -126,6 +126,12 @@ async def _stream_chat(request: ChatRequest, db: Session):
         None, partial(llm.chat, messages, system_prompt=system_prompt)
     )
 
+    # ── Debug logging ──────────────────────────────────────────────────────────
+    user_msg = messages[-1]["content"] if messages else ""
+    logger.info("=== USER ===\n%s", user_msg)
+    logger.info("=== LLM RESPONSE ===\n%s", raw_response)
+    # ──────────────────────────────────────────────────────────────────────────
+
     if raw_response.startswith("Error"):
         yield {
             "event": "error",
