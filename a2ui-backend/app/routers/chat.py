@@ -11,11 +11,13 @@ Flow:
    - Plain text lines are streamed as a2ui_text events
 4. Save completed surface to history
 """
+import asyncio
 import json
 import logging
 import re
 import uuid
 from datetime import datetime, timezone
+from functools import partial
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -68,10 +70,13 @@ async def _stream_chat(request: ChatRequest, db: Session):
     system_prompt = skills.get_system_prompt()
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
-    # Call LLM (blocking for now — streaming LLM output is a future enhancement)
+    # Call LLM in a thread so the event loop stays unblocked for SSE
     yield {"event": "thinking", "data": json.dumps({"status": "Thinking..."})}
 
-    raw_response = llm.chat(messages, system_prompt=system_prompt)
+    loop = asyncio.get_event_loop()
+    raw_response = await loop.run_in_executor(
+        None, partial(llm.chat, messages, system_prompt=system_prompt)
+    )
 
     if raw_response.startswith("Error"):
         yield {
