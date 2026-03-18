@@ -50,7 +50,6 @@ def _extract_title(surface_update: dict) -> str:
 
 def _parse_a2ui_lines(raw: str) -> list[dict]:
     """Extract valid JSON objects from LLM output (handles markdown fences)."""
-    # Strip markdown fences if present
     raw = re.sub(r"```[a-z]*\n?", "", raw).strip()
     messages: list[dict] = []
     for line in raw.splitlines():
@@ -63,6 +62,55 @@ def _parse_a2ui_lines(raw: str) -> list[dict]:
             except json.JSONDecodeError:
                 pass
     return messages
+
+
+def _reassemble(messages: list[dict]) -> list[dict]:
+    """
+    Tolerates LLM output where components/contents are bare (not wrapped in
+    surfaceUpdate/dataModelUpdate).  Also patches a missing root component.
+    """
+    has_su  = any("surfaceUpdate"    in m for m in messages)
+    has_dmu = any("dataModelUpdate"  in m for m in messages)
+    if has_su and has_dmu:
+        return messages  # already well-formed
+
+    begin = next((m for m in messages if "beginRendering" in m), None)
+    if not begin:
+        return messages
+
+    surface_id    = begin["beginRendering"].get("surfaceId", "")
+    declared_root = begin["beginRendering"].get("root", "root")
+
+    # bare component: has "id" and "component" keys, no protocol wrapper
+    bare_comps    = [m for m in messages if "id" in m and "component" in m
+                     and not {"surfaceUpdate","dataModelUpdate","beginRendering"} & m.keys()]
+    # bare content item: has "key" and "valueString"
+    bare_contents = [m for m in messages if "key" in m and "valueString" in m
+                     and "dataModelUpdate" not in m]
+
+    result: list[dict] = [begin]
+
+    if bare_comps and not has_su:
+        comp_ids = {c["id"] for c in bare_comps}
+        if declared_root not in comp_ids:
+            # inject a Column wrapper so the renderer has something to start from
+            wrapper = {
+                "id": declared_root,
+                "component": {"Column": {"children": {"explicitList": [c["id"] for c in bare_comps]}}},
+            }
+            components = [wrapper] + bare_comps
+        else:
+            components = bare_comps
+        result.append({"surfaceUpdate": {"surfaceId": surface_id, "components": components}})
+    else:
+        result.extend(m for m in messages if "surfaceUpdate" in m)
+
+    if bare_contents and not has_dmu:
+        result.append({"dataModelUpdate": {"surfaceId": surface_id, "contents": bare_contents}})
+    else:
+        result.extend(m for m in messages if "dataModelUpdate" in m)
+
+    return result
 
 
 async def _stream_chat(request: ChatRequest, db: Session):
@@ -86,7 +134,7 @@ async def _stream_chat(request: ChatRequest, db: Session):
         return
 
     # Check if response contains A2UI JSON
-    a2ui_messages = _parse_a2ui_lines(raw_response)
+    a2ui_messages = _reassemble(_parse_a2ui_lines(raw_response))
 
     if not a2ui_messages:
         # Plain-text conversational response
