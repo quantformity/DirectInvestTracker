@@ -50,11 +50,12 @@ Hydrated by: `qfi-history portfolio/symbol/sector/account --json`
 
 **PieChart** — proportional breakdown
 Props: `dataBinding`, `nameKey: "group_key"`, `valueKey: "total_mtm_reporting"`, `valuePrefix: "$"`, `showLegend: true`, `height`
-Hydrated by: `qfi-summary show --group-by sector --json`
+Use `/chart/slices/sector`, `/chart/slices/symbol`, `/chart/slices/account`, or `/chart/slices/category`
 
 **BarChart** — comparative bars
-Props: `dataBinding`, `xKey: "group_key"`, `bars: [{key, label, color}]`, `yLabel`, `layout: "vertical"|"horizontal"`, `height`
-Hydrated by: `qfi-summary show --group-by sector --json`
+Props: `dataBinding`, `xKey: "group_key"`, `bars: [{key, label, color}]`, `yLabel` (plain string), `layout` (plain string: `"vertical"` or `"horizontal"`), `height`
+Use `/chart/bars/sector`, `/chart/bars/symbol`, `/chart/bars/account`, or `/chart/bars/category`
+Note: `yLabel` and `layout` are plain strings, NOT `{literalString: ...}` objects
 
 **MarketQuoteCard** — quote cards grid/list
 Props: `dataBinding: "/market/quotes"`, `layout: "grid"|"list"`, `columns: 3`
@@ -79,13 +80,21 @@ Flow: call `qfi-report generate --format html --json` → fill `<div data-llm-se
 | `/positions/rows` | qfi-position list |
 | `/portfolio/kpi` | qfi-summary show |
 | `/chart/points` | qfi-history portfolio/symbol/sector/account |
-| `/chart/slices` | qfi-summary show --group-by X |
-| `/chart/bars` | qfi-summary show --group-by X |
+| `/chart/slices/sector` | qfi-summary show --group-by sector |
+| `/chart/slices/symbol` | qfi-summary show --group-by symbol |
+| `/chart/slices/account` | qfi-summary show --group-by account |
+| `/chart/slices/category` | qfi-summary show --group-by category |
+| `/chart/bars/sector` | qfi-summary show --group-by sector |
+| `/chart/bars/symbol` | qfi-summary show --group-by symbol |
+| `/chart/bars/account` | qfi-summary show --group-by account |
+| `/chart/bars/category` | qfi-summary show --group-by category |
 | `/market/quotes` | qfi-market quote-list |
 | `/fx/rates` | qfi-fx list |
 | `/sector/mappings` | qfi-sector list |
 | `/accounts/list` | qfi-account list |
 | `/accounts/mtm` | qfi-account mtm |
+
+**Important:** Always use the specific path variant, e.g. `/chart/bars/symbol` for symbol PnL, `/chart/bars/sector` for sector breakdown. Plain `/chart/bars` defaults to sector.
 
 ## Component Selection
 | User asks | Use |

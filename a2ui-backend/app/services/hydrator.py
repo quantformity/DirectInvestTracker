@@ -78,12 +78,19 @@ def _hydrate_chart_points() -> Any:
     return _run_cli("cli.qfi_history", ["portfolio"])
 
 
+def _hydrate_summary_groups(group_by: str) -> Any:
+    data = _run_cli("cli.qfi_summary", ["show", "--group-by", group_by])
+    if isinstance(data, dict):
+        return data.get("groups", data)
+    return data
+
+
 def _hydrate_chart_slices() -> Any:
-    return _run_cli("cli.qfi_summary", ["show", "--group-by", "sector"])
+    return _hydrate_summary_groups("sector")
 
 
 def _hydrate_chart_bars() -> Any:
-    return _run_cli("cli.qfi_summary", ["show", "--group-by", "sector"])
+    return _hydrate_summary_groups("sector")
 
 
 def _hydrate_market_quotes() -> Any:
@@ -119,15 +126,28 @@ _PATH_MAP: dict[str, Any] = {
     "accounts/mtm":    _hydrate_accounts_mtm,
 }
 
+# Valid group-by values for parameterised paths
+_VALID_GROUP_BY = {"sector", "symbol", "account", "category", "cash_gic"}
+
 
 def hydrate(path: str) -> Any:
     """
-    Given a data model path (e.g. "positions/rows"), run the appropriate CLI
-    command and return the real data.  Returns None if the path is unknown or
-    the CLI call fails.
+    Given a data model path, run the appropriate CLI and return data.
+    Supports parameterised paths:
+      chart/slices/{groupBy}  and  chart/bars/{groupBy}
+    e.g. chart/bars/symbol, chart/slices/account
     """
-    # Strip leading slash
     clean = path.lstrip("/")
+
+    # Parameterised group-by: chart/bars/symbol, chart/slices/account, etc.
+    for prefix in ("chart/bars/", "chart/slices/"):
+        if clean.startswith(prefix):
+            group_by = clean[len(prefix):]
+            if group_by in _VALID_GROUP_BY:
+                return _hydrate_summary_groups(group_by)
+            logger.warning("Unknown group-by '%s' in path: %s", group_by, path)
+            return None
+
     fn = _PATH_MAP.get(clean)
     if fn is None:
         logger.warning("No hydrator for path: %s", path)

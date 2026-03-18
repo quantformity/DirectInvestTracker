@@ -53,7 +53,8 @@ export function renderNode(id: string, ctx: RendererContext): React.ReactNode {
   const [typeName, props] = Object.entries(entry.component)[0] ?? [];
   if (!typeName) return null;
 
-  // Resolve dataBinding shorthand
+  // Resolve dataBinding shorthand; run all other props through resolveBinding
+  // so {literalString: "..."} wrappers on plain props are transparently handled.
   const resolvedProps: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
     if (k === "dataBinding") {
@@ -62,7 +63,7 @@ export function renderNode(id: string, ctx: RendererContext): React.ReactNode {
       resolvedProps.__data = ctx.dataModel[key] ?? ctx.dataModel[path] ?? [];
       resolvedProps.dataBinding = v;
     } else {
-      resolvedProps[k] = v;
+      resolvedProps[k] = resolveBinding(v, ctx.dataModel);
     }
   }
 
