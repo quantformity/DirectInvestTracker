@@ -2,6 +2,7 @@
 LLM service for A2UI backend.
 Reads provider config from the shared settings database and calls the appropriate API.
 """
+import json
 import logging
 import requests
 from typing import Optional
@@ -23,15 +24,27 @@ def _active_model(cfg: dict) -> str:
 
 def _chat_ollama(messages: list[dict], model: str, base_url: str) -> str:
     url = f"{base_url.rstrip('/')}/api/chat"
-    payload = {"model": model, "stream": False, "messages": messages}
+    payload = {"model": model, "stream": True, "messages": messages}
     try:
-        r = requests.post(url, json=payload, timeout=180)
+        # Use streaming so bytes keep flowing and no read-timeout fires
+        r = requests.post(url, json=payload, stream=True, timeout=(10, None))
         r.raise_for_status()
-        return r.json().get("message", {}).get("content", "")
+        chunks: list[str] = []
+        for raw_line in r.iter_lines():
+            if not raw_line:
+                continue
+            try:
+                obj = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            chunks.append(obj.get("message", {}).get("content", ""))
+            if obj.get("done"):
+                break
+        return "".join(chunks)
     except requests.exceptions.ConnectionError:
         return "Error: Cannot connect to Ollama. Make sure it is running."
     except requests.exceptions.Timeout:
-        return "Error: Ollama request timed out."
+        return "Error: Cannot reach Ollama — connection timed out."
     except Exception as exc:
         logger.error("Ollama error: %s", exc)
         return f"Error: {exc}"
