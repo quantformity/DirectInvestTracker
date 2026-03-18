@@ -31,6 +31,9 @@ export function resolveBinding(
   dataModel: Record<string, unknown>
 ): unknown {
   if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveBinding(item, dataModel));
+  }
   if (typeof value === "object" && value !== null) {
     const v = value as Record<string, unknown>;
     if ("literalString" in v) return v.literalString;
@@ -41,6 +44,12 @@ export function resolveBinding(
       const key = path.startsWith("/") ? path.slice(1) : path;
       return dataModel[key] ?? dataModel[path];
     }
+    // Recursively resolve plain objects (e.g. bars array items)
+    const resolved: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) {
+      resolved[k] = resolveBinding(val, dataModel);
+    }
+    return resolved;
   }
   return value;
 }

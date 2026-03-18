@@ -64,10 +64,67 @@ def _parse_a2ui_lines(raw: str) -> list[dict]:
     return messages
 
 
+def _infer_components(paths: list[str], root_id: str) -> list[dict]:
+    """
+    When the LLM omits surfaceUpdate entirely, infer components from the
+    data binding paths declared in dataModelUpdate.
+    """
+    children: list[dict] = []
+    for i, path in enumerate(paths):
+        cid = f"inferred-{i}"
+        p = path.lstrip("/")
+        if p.startswith("chart/bars"):
+            children.append({"id": cid, "component": {"BarChart": {
+                "dataBinding": f"/{p}", "xKey": "group_key",
+                "bars": [{"key": "total_pnl_reporting", "label": "P&L", "color": "#10b981"},
+                         {"key": "total_mtm_reporting", "label": "MTM", "color": "#3b82f6"}],
+                "layout": "horizontal", "height": 350,
+            }}})
+        elif p.startswith("chart/slices"):
+            children.append({"id": cid, "component": {"PieChart": {
+                "dataBinding": f"/{p}", "nameKey": "group_key",
+                "valueKey": "total_mtm_reporting", "valuePrefix": "$",
+                "showLegend": True, "height": 320,
+            }}})
+        elif p == "chart/points":
+            children.append({"id": cid, "component": {"LineChart": {
+                "dataBinding": "/chart/points", "xKey": "date",
+                "series": [{"key": "mtm", "label": "MTM", "color": "#3b82f6"}],
+                "height": 320,
+            }}})
+        elif p == "positions/rows":
+            children.append({"id": cid, "component": {"PositionsTable": {
+                "dataBinding": "/positions/rows", "showPnl": True, "showSector": True,
+            }}})
+        elif p == "market/quotes":
+            children.append({"id": cid, "component": {"MarketQuoteCard": {
+                "dataBinding": "/market/quotes", "layout": "grid", "columns": 3,
+            }}})
+        elif p == "fx/rates":
+            children.append({"id": cid, "component": {"FxRateTable": {
+                "dataBinding": "/fx/rates", "showTimestamp": True,
+            }}})
+        elif p == "portfolio/kpi":
+            children.append({"id": cid, "component": {"PortfolioKPI": {
+                "dataBinding": "/portfolio/kpi",
+            }}})
+
+    if not children:
+        return []
+
+    root = {
+        "id": root_id,
+        "component": {"Column": {"children": {"explicitList": [c["id"] for c in children]}}},
+    }
+    return [root] + children
+
+
 def _reassemble(messages: list[dict]) -> list[dict]:
     """
-    Tolerates LLM output where components/contents are bare (not wrapped in
-    surfaceUpdate/dataModelUpdate).  Also patches a missing root component.
+    Tolerates malformed LLM output:
+    - bare component/content objects not wrapped in surfaceUpdate/dataModelUpdate
+    - surfaceUpdate missing entirely (infers components from dataModelUpdate paths)
+    - root component ID missing from component list
     """
     has_su  = any("surfaceUpdate"    in m for m in messages)
     has_dmu = any("dataModelUpdate"  in m for m in messages)
@@ -90,10 +147,13 @@ def _reassemble(messages: list[dict]) -> list[dict]:
 
     result: list[dict] = [begin]
 
-    if bare_comps and not has_su:
+    # ── surfaceUpdate ──────────────────────────────────────────────────────────
+    if has_su:
+        result.extend(m for m in messages if "surfaceUpdate" in m)
+    elif bare_comps:
+        # Wrap loose components
         comp_ids = {c["id"] for c in bare_comps}
         if declared_root not in comp_ids:
-            # inject a Column wrapper so the renderer has something to start from
             wrapper = {
                 "id": declared_root,
                 "component": {"Column": {"children": {"explicitList": [c["id"] for c in bare_comps]}}},
@@ -103,12 +163,22 @@ def _reassemble(messages: list[dict]) -> list[dict]:
             components = bare_comps
         result.append({"surfaceUpdate": {"surfaceId": surface_id, "components": components}})
     else:
-        result.extend(m for m in messages if "surfaceUpdate" in m)
+        # No components at all — infer from dataModelUpdate paths
+        dmu = next((m for m in messages if "dataModelUpdate" in m), None)
+        paths = []
+        if dmu:
+            paths = [item["key"] for item in dmu["dataModelUpdate"].get("contents", [])]
+        inferred = _infer_components(paths, declared_root)
+        if inferred:
+            logger.warning("LLM omitted surfaceUpdate — inferred %d component(s) from paths: %s",
+                           len(inferred) - 1, paths)
+            result.append({"surfaceUpdate": {"surfaceId": surface_id, "components": inferred}})
 
-    if bare_contents and not has_dmu:
-        result.append({"dataModelUpdate": {"surfaceId": surface_id, "contents": bare_contents}})
-    else:
+    # ── dataModelUpdate ────────────────────────────────────────────────────────
+    if has_dmu:
         result.extend(m for m in messages if "dataModelUpdate" in m)
+    elif bare_contents:
+        result.append({"dataModelUpdate": {"surfaceId": surface_id, "contents": bare_contents}})
 
     return result
 
