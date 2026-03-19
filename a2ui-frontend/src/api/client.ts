@@ -177,3 +177,20 @@ export async function saveSurface(
 export async function deleteSurface(id: string): Promise<void> {
   await fetch(`${API_BASE}/surfaces/${id}`, { method: "DELETE" });
 }
+
+// ── Live price refresh ─────────────────────────────────────────────────────────
+
+/**
+ * Fetch the latest hydrated data for all live paths (market/quotes,
+ * positions/rows, portfolio/kpi). Used by the background quote updater.
+ * Returns a dict of path → data, or null on failure.
+ */
+export async function fetchLivePrices(): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(`${API_BASE}/data/prices`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}

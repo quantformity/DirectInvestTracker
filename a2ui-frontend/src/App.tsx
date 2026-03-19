@@ -3,9 +3,11 @@ import { HistoryPanel } from "./panels/HistoryPanel";
 import { SurfacePanel } from "./panels/SurfacePanel";
 import { ChatPanel } from "./panels/ChatPanel";
 import type { ChatMessage } from "./api/client";
+import { useQuoteUpdater } from "./hooks/useQuoteUpdater";
 
 export default function App() {
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
+  useQuoteUpdater();
 
   const handleActionResponse = (response: string) => {
     setConversation((prev) => [

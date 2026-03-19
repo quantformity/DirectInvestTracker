@@ -41,7 +41,7 @@ def load_skills() -> str:
 
 
 _CACHED_SKILLS: str | None = None
-_CACHED_PROMPT: str | None = None
+_CACHED_PROMPT: str | None = None  # cleared on server restart
 
 
 def get_system_prompt() -> str:
@@ -96,6 +96,7 @@ Only SELECT is allowed — no INSERT, UPDATE, DELETE, or DDL.
 3. Every surface needs: beginRendering → surfaceUpdate → dataModelUpdate.
 4. Always use catalogId "qfi-catalog-v1".
 5. For conversational answers that don't need a UI surface, respond with plain text.
+6. Always include a concise `title` string in `beginRendering` — this becomes the surface label shown in the UI (e.g. `"title": "Portfolio Overview"`, `"title": "P&L by Symbol"`).
 
 ## Skills Reference
 

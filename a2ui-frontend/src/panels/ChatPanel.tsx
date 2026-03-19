@@ -7,7 +7,6 @@ import type { A2UIComponent } from "../renderer/A2UIRenderer";
 interface Message {
   role: "user" | "assistant";
   content: string;
-  isThinking?: boolean;
 }
 
 export function ChatPanel() {
@@ -16,7 +15,7 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
-  const { addOrUpdateSurface } = useSurfaceStore();
+  const { addOrUpdateSurface, nextNumber } = useSurfaceStore();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -37,12 +36,11 @@ export function ChatPanel() {
       content: m.content,
     }));
 
-    // Collect A2UI messages to build surface
     let surfaceId = "";
     let rootId = "";
+    let llmTitle = "";                       // title from beginRendering.title
     const components: A2UIComponent[] = [];
     const dataModel: Record<string, unknown> = {};
-    let title = "New Surface";
     let surfaceCreated = false;
     let textResponse = "";
 
@@ -59,18 +57,24 @@ export function ChatPanel() {
             const br = msg.beginRendering as Record<string, unknown>;
             surfaceId = (br.surfaceId as string) || crypto.randomUUID();
             rootId = br.root as string;
+            // LLM-provided title (rule 6 in system prompt)
+            if (typeof br.title === "string" && br.title) {
+              llmTitle = br.title;
+            }
           } else if ("surfaceUpdate" in msg) {
             const su = msg.surfaceUpdate as Record<string, unknown>;
             const comps = su.components as A2UIComponent[];
             components.push(...comps);
-            // Extract title from first Text component
-            for (const comp of comps) {
-              const textComp = comp.component?.["Text"];
-              if (textComp) {
-                const literal = (textComp as Record<string, unknown>)?.text as Record<string, unknown>;
-                if (literal?.literalString) {
-                  title = String(literal.literalString);
-                  break;
+            // Fall back: extract title from first Text component if LLM didn't set it
+            if (!llmTitle) {
+              for (const comp of comps) {
+                const textComp = comp.component?.["Text"];
+                if (textComp) {
+                  const literal = (textComp as Record<string, unknown>)?.text as Record<string, unknown>;
+                  if (literal?.literalString) {
+                    llmTitle = String(literal.literalString);
+                    break;
+                  }
                 }
               }
             }
@@ -99,21 +103,25 @@ export function ChatPanel() {
         }
       }
 
-      // If we got a surface, save it
       if (components.length > 0 && surfaceId) {
+        // Assign next sequential number at creation time
+        const number = nextNumber;
+        const title = llmTitle || `Surface #${number}`;
         const entry: SurfaceEntry = {
           id: surfaceId,
+          number,
           title,
           rootId,
           components,
           dataModel,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
         addOrUpdateSurface(entry);
         surfaceCreated = true;
       }
 
-      const assistantContent = textResponse || (surfaceCreated ? `Created surface: **${title}**` : "Done.");
+      const assistantContent = textResponse || (surfaceCreated ? `Created surface: **${llmTitle || "New Surface"}**` : "Done.");
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: assistantContent },

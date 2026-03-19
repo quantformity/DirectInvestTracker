@@ -39,9 +39,12 @@ export function HistoryPanel() {
                       : "border-transparent hover:bg-slate-800/50 text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  <p className="text-xs font-medium truncate pr-5">{s.title || "Untitled"}</p>
+                  <p className="text-xs font-medium truncate pr-5">
+                    <span className="text-slate-500 mr-1">#{s.number ?? "?"}</span>
+                    {s.title || "Untitled"}
+                  </p>
                   <p className="text-xs text-slate-500 truncate">
-                    {new Date(s.createdAt).toLocaleString()}
+                    {new Date(s.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </p>
                   <button
                     onClick={(e) => { e.stopPropagation(); deleteSurface(s.id); }}
