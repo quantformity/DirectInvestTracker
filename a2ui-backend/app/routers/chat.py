@@ -25,8 +25,10 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.database import get_db, SurfaceHistory
 from app.schemas import ChatRequest
-from app.services import llm, skills
+from app.services import llm, skills, db_tools
 from app.services.hydrator import hydrate_all
+
+MAX_TOOL_TURNS = 5
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -188,19 +190,59 @@ async def _stream_chat(request: ChatRequest, db: Session):
     system_prompt = skills.get_system_prompt()
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
-    # Call LLM in a thread so the event loop stays unblocked for SSE
+    # ── Agentic loop — LLM may call tools before returning final A2UI output ──
     yield {"event": "thinking", "data": json.dumps({"status": "Thinking..."})}
 
     loop = asyncio.get_event_loop()
-    raw_response = await loop.run_in_executor(
-        None, partial(llm.chat, messages, system_prompt=system_prompt)
-    )
+    current_messages = list(messages)
+    raw_response = f"Error: exceeded {MAX_TOOL_TURNS} tool-call rounds without a final answer."
 
-    # ── Debug logging ──────────────────────────────────────────────────────────
-    user_msg = messages[-1]["content"] if messages else ""
-    logger.info("=== USER ===\n%s", user_msg)
-    logger.info("=== LLM RESPONSE ===\n%s", raw_response)
-    # ──────────────────────────────────────────────────────────────────────────
+    for _turn in range(MAX_TOOL_TURNS + 1):
+        response = await loop.run_in_executor(
+            None,
+            partial(
+                llm.chat_one_turn,
+                current_messages,
+                system_prompt=system_prompt,
+                tools=db_tools.TOOL_DEFINITIONS,
+            ),
+        )
+
+        # ── Debug logging ──────────────────────────────────────────────────
+        logger.info("=== TURN %d — MESSAGES SENT TO LLM ===", _turn)
+        for m in current_messages:
+            logger.info("[%s]: %s", m["role"], str(m.get("content", ""))[:400])
+        if response.tool_calls:
+            logger.info("=== LLM REQUESTED TOOLS: %s ===",
+                        [tc.name for tc in response.tool_calls])
+        else:
+            logger.info("=== LLM FINAL RESPONSE ===\n%s", response.text)
+        # ──────────────────────────────────────────────────────────────────
+
+        if response.text.startswith("Error"):
+            raw_response = response.text
+            break
+
+        if not response.tool_calls:
+            # Final answer — proceed to A2UI processing
+            raw_response = response.text
+            break
+
+        # LLM wants tool calls — execute each and feed results back
+        current_messages = current_messages + [response.raw_assistant_message]
+        for tc in response.tool_calls:
+            tool_label = tc.name.replace("_", " ")
+            yield {"event": "thinking", "data": json.dumps({"status": f"Calling {tool_label}..."})}
+            result = await loop.run_in_executor(
+                None, partial(db_tools.execute_tool, tc.name, tc.arguments)
+            )
+            logger.info("Tool %s result: %s", tc.name, str(result)[:400])
+            current_messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "name": tc.name,
+                "content": json.dumps(result),
+            })
 
     if raw_response.startswith("Error"):
         yield {
