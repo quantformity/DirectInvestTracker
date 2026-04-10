@@ -47,6 +47,21 @@ def create_position(payload: PositionCreate, db: Session = Depends(get_db)):
 
     position = Position(**payload_dict)
     db.add(position)
+
+    # Auto-create a corresponding cash withdrawal for Equity/GIC purchases
+    if payload.category in (CategoryEnum.Equity, CategoryEnum.GIC) and payload.quantity > 0:
+        total_cost = payload.quantity * payload.cost_per_share
+        cash_withdrawal = Position(
+            account_id=payload.account_id,
+            symbol="CASH",
+            category=CategoryEnum.Cash,
+            quantity=-total_cost,
+            cost_per_share=1.0,
+            currency=account.base_currency,
+            date_added=payload.date_added,
+        )
+        db.add(cash_withdrawal)
+
     db.commit()
     db.refresh(position)
     return position
