@@ -32,7 +32,7 @@ class PositionBase(BaseModel):
     account_id: int
     symbol: str
     category: CategoryEnum
-    quantity: float = Field(gt=0)
+    quantity: float
     cost_per_share: float = Field(ge=0)
     date_added: date = Field(default_factory=date.today)
     yield_rate: Optional[float] = None

@@ -77,7 +77,8 @@ export function PositionManager() {
       setEditingAcc(null);
       fetchData();
     } catch (e: unknown) {
-      setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Error saving account");
+      const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg ?? "").join("; ") : "Error saving account");
     } finally {
       setLoading(false);
     }
@@ -116,7 +117,8 @@ export function PositionManager() {
       setEditingPos(null);
       fetchData();
     } catch (e: unknown) {
-      setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Error saving position");
+      const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg ?? "").join("; ") : "Error saving position");
     } finally {
       setLoading(false);
     }
@@ -156,7 +158,8 @@ export function PositionManager() {
       setTxForm({ ...defaultTxForm, account_id: txForm.account_id, type: txForm.type });
       fetchData();
     } catch (e: unknown) {
-      setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Error saving transaction");
+      const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg ?? "").join("; ") : "Error saving transaction");
     } finally {
       setLoading(false);
     }
