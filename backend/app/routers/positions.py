@@ -17,7 +17,7 @@ class PositionSell(BaseModel):
 
 
 class PositionSellResponse(BaseModel):
-    position_id: int | None  # None if position was fully sold and deleted
+    position_id: int | None  # None if position was fully sold (row marked closed)
     remaining_quantity: float
     net_cash: float
     currency: str
@@ -45,10 +45,16 @@ def _validate_position(payload_dict: dict):
 
 
 @router.get("/", response_model=list[PositionOut])
-def list_positions(account_id: int | None = None, db: Session = Depends(get_db)):
+def list_positions(
+    account_id: int | None = None,
+    include_closed: bool = False,
+    db: Session = Depends(get_db),
+):
     q = db.query(Position)
     if account_id is not None:
         q = q.filter(Position.account_id == account_id)
+    if not include_closed:
+        q = q.filter(Position.closed_date.is_(None))
     return q.all()
 
 
@@ -130,6 +136,9 @@ def sell_position(position_id: int, payload: PositionSell, db: Session = Depends
     if not position:
         raise HTTPException(status_code=404, detail="Position not found")
 
+    if position.closed_date is not None:
+        raise HTTPException(status_code=422, detail="Position is already closed")
+
     if position.category not in (CategoryEnum.Equity, CategoryEnum.GIC):
         raise HTTPException(status_code=422, detail="Only Equity or GIC positions can be sold")
 
@@ -157,11 +166,28 @@ def sell_position(position_id: int, payload: PositionSell, db: Session = Depends
     )
     db.add(cash_deposit)
 
+    # Preserve sold portion as a closed row so history can reconstruct the
+    # holding's contribution up to the sale date.
     remaining = position.quantity - payload.quantity
     if remaining <= 0:
-        db.delete(position)
+        # Full sell: mark the original row closed (quantity unchanged).
+        position.closed_date = payload.date
         result_id: int | None = None
     else:
+        # Partial sell: split the sold quantity into a new closed row,
+        # reduce the original position to the remaining quantity.
+        closed_row = Position(
+            account_id=position.account_id,
+            symbol=position.symbol,
+            category=position.category,
+            quantity=payload.quantity,
+            cost_per_share=position.cost_per_share,
+            currency=position.currency,
+            yield_rate=position.yield_rate,
+            date_added=position.date_added,
+            closed_date=payload.date,
+        )
+        db.add(closed_row)
         position.quantity = remaining
         result_id = position.id
 

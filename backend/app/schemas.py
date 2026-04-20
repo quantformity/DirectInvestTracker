@@ -37,6 +37,7 @@ class PositionBase(BaseModel):
     date_added: date = Field(default_factory=date.today)
     yield_rate: Optional[float] = None
     currency: str = "USD"
+    closed_date: Optional[date] = None
 
 
 class PositionCreate(PositionBase):

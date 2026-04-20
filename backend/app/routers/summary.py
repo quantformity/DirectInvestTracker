@@ -117,7 +117,7 @@ def get_summary(
 ):
     reporting_currency = os.getenv("REPORTING_CURRENCY", REPORTING_CURRENCY)
 
-    positions = db.query(Position).all()
+    positions = db.query(Position).filter(Position.closed_date.is_(None)).all()
     prices = _get_latest_prices(db)
     fx_rates = _get_latest_fx_rates(db)
 

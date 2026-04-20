@@ -36,6 +36,7 @@ class Position(Base):
     date_added: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
     yield_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD", server_default="USD")
+    closed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     account: Mapped["Account"] = relationship("Account", back_populates="positions")
 
