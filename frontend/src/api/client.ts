@@ -37,6 +37,7 @@ export interface Position {
   date_added: string;
   yield_rate: number | null;
   currency: string;
+  closed_date: string | null;
 }
 
 export interface SellPositionResponse {

@@ -129,9 +129,6 @@ def _compute_equity_aggregate(
     combined: dict = defaultdict(lambda: {"pnl": 0.0, "mtm": 0.0, "cash_gic": 0.0})
 
     for symbol, (df, sym_positions) in sym_dfs.items():
-        total_qty = sum(p.quantity for p in sym_positions)
-        avg_cost = sum(p.quantity * p.cost_per_share for p in sym_positions) / total_qty
-
         stock_ccy = sym_positions[0].currency.upper()
         acct = accounts.get(sym_positions[0].account_id)
         acct_ccy = acct.base_currency.upper() if acct else reporting_currency
@@ -139,10 +136,23 @@ def _compute_equity_aggregate(
         df_aligned = df.reindex(all_dates).ffill().dropna(subset=["Close"])
 
         for dt, row in df_aligned.iterrows():
+            # Only include positions that were active on this date: held on or
+            # after date_added and not yet closed.
+            active = [
+                p for p in sym_positions
+                if p.date_added <= dt
+                and (p.closed_date is None or dt < p.closed_date)
+            ]
+            if not active:
+                continue
+            total_qty = sum(p.quantity for p in active)
+            if total_qty == 0:
+                continue
+            total_cost = sum(p.quantity * p.cost_per_share for p in active)
             close = float(row["Close"])
             fx = _fx_on_date(stock_ccy, acct_ccy, dt) * _fx_on_date(acct_ccy, reporting_currency, dt)
             combined[dt]["mtm"] += close * total_qty * fx
-            combined[dt]["pnl"] += (close - avg_cost) * total_qty * fx
+            combined[dt]["pnl"] += (close * total_qty - total_cost) * fx
 
     return combined, all_dates
 
@@ -201,6 +211,8 @@ def get_aggregate_history(
 
         for dt in all_dates:
             if dt < pos.date_added:
+                continue
+            if pos.closed_date is not None and dt >= pos.closed_date:
                 continue
 
             if cat == "Cash":
@@ -297,8 +309,6 @@ def get_history(
         raise HTTPException(status_code=422, detail="Historical data is only available for Equity positions")
 
     earliest_date = min(p.date_added for p in equity_positions)
-    total_quantity = sum(p.quantity for p in equity_positions)
-    avg_cost = sum(p.quantity * p.cost_per_share for p in equity_positions) / total_quantity
 
     df = _fetch_or_cache(symbol, earliest_date, use_cache)
     if df.empty:
@@ -306,13 +316,24 @@ def get_history(
             return HistoryOut(symbol=symbol, account_id=account_id, points=[])
         raise HTTPException(status_code=503, detail=f"Could not fetch historical data for '{symbol}'")
 
-    points = [
-        HistoryPoint(
+    points: list[HistoryPoint] = []
+    for dt, row in df.iterrows():
+        active = [
+            p for p in equity_positions
+            if p.date_added <= dt
+            and (p.closed_date is None or dt < p.closed_date)
+        ]
+        if not active:
+            continue
+        total_qty = sum(p.quantity for p in active)
+        if total_qty == 0:
+            continue
+        total_cost = sum(p.quantity * p.cost_per_share for p in active)
+        close = float(row["Close"])
+        points.append(HistoryPoint(
             date=dt,
-            close_price=float(row["Close"]),
-            pnl=(float(row["Close"]) - avg_cost) * total_quantity,
-            mtm=float(row["Close"]) * total_quantity,
-        )
-        for dt, row in df.iterrows()
-    ]
+            close_price=close,
+            pnl=close * total_qty - total_cost,
+            mtm=close * total_qty,
+        ))
     return HistoryOut(symbol=symbol, account_id=account_id, points=points)

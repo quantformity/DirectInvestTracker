@@ -41,6 +41,10 @@ def _migrate():
             conn.execute(text("ALTER TABLE positions ADD COLUMN currency VARCHAR(10) NOT NULL DEFAULT 'USD'"))
             conn.commit()
 
+        if "closed_date" not in positions_cols:
+            conn.execute(text("ALTER TABLE positions ADD COLUMN closed_date DATE"))
+            conn.commit()
+
         market_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(market_data)")).fetchall()]
         if "company_name" not in market_cols:
             conn.execute(text("ALTER TABLE market_data ADD COLUMN company_name VARCHAR(200)"))
