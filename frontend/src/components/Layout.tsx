@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Position Manager", icon: "📝", end: true },
   { to: "/positions", label: "Position List", icon: "📊" },
   { to: "/summary", label: "Summary", icon: "📈" },
+  { to: "/account-summary", label: "Account Summary", icon: "🏦" },
   { to: "/market", label: "Market Insights", icon: "💹" },
   { to: "/history", label: "History", icon: "📅" },
   { to: "/sector", label: "Sector", icon: "🗂️" },
