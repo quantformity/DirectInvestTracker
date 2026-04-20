@@ -47,6 +47,52 @@ export function PositionManager() {
   // Transaction form
   const [txForm, setTxForm] = useState(defaultTxForm);
 
+  // Sell popover state
+  const [sellingPos, setSellingPos] = useState<Position | null>(null);
+  const [sellForm, setSellForm] = useState({ quantity: "", price: "", fee: "", date: new Date().toISOString().split("T")[0] });
+
+  const openSellPopover = (p: Position) => {
+    setSellingPos(p);
+    setSellForm({
+      quantity: String(p.quantity),
+      price: String(p.cost_per_share),
+      fee: "",
+      date: new Date().toISOString().split("T")[0],
+    });
+  };
+
+  const closeSellPopover = () => {
+    setSellingPos(null);
+  };
+
+  const handleSellPosition = async () => {
+    if (!sellingPos) return;
+    const qty = Number(sellForm.quantity);
+    const price = Number(sellForm.price);
+    const fee = Number(sellForm.fee || 0);
+    if (!qty || qty <= 0) { setError("Enter a positive quantity"); return; }
+    if (price < 0) { setError("Price cannot be negative"); return; }
+    if (qty > sellingPos.quantity) { setError(`Cannot sell more than held (${sellingPos.quantity})`); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const resp = await api.sellPosition(sellingPos.id, {
+        quantity: qty,
+        price,
+        fee,
+        date: sellForm.date,
+      });
+      showSuccess(`Sold ${qty} ${sellingPos.symbol} — ${resp.currency} ${resp.net_cash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} deposited`);
+      closeSellPopover();
+      fetchData();
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg ?? "").join("; ") : "Error selling position");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchData = async () => {
     const [accs, poss] = await Promise.all([api.getAccounts(), api.getPositions()]);
     setAccounts(accs);
@@ -588,9 +634,25 @@ export function PositionManager() {
                       <td className="px-4 py-3 text-right text-gray-300">{p.quantity.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right text-gray-300">{p.cost_per_share.toFixed(2)}</td>
                       <td className="px-4 py-3 text-gray-400">{p.date_added}</td>
-                      <td className="px-4 py-3 flex gap-2">
-                        <button onClick={() => startEditPosition(p)} className="text-blue-400 hover:text-blue-300 text-xs">Edit</button>
-                        <button onClick={() => handleDeletePosition(p.id)} className="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                      <td className="px-4 py-3 relative">
+                        <div className="flex gap-2">
+                          <button onClick={() => startEditPosition(p)} className="text-blue-400 hover:text-blue-300 text-xs">Edit</button>
+                          {(p.category === "Equity" || p.category === "GIC") && (
+                            <button onClick={() => openSellPopover(p)} className="text-amber-400 hover:text-amber-300 text-xs">Sell</button>
+                          )}
+                          <button onClick={() => handleDeletePosition(p.id)} className="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                        </div>
+                        {sellingPos?.id === p.id && (
+                          <SellPopover
+                            position={p}
+                            form={sellForm}
+                            setForm={setSellForm}
+                            onClose={closeSellPopover}
+                            onSubmit={handleSellPosition}
+                            loading={loading}
+                            accountCurrency={accounts.find((a) => a.id === p.account_id)?.base_currency ?? p.currency}
+                          />
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -616,5 +678,131 @@ function CategoryBadge({ category }: { category: CategoryEnum }) {
   };
   return (
     <span className={`px-2 py-0.5 rounded text-xs ${colors[category]}`}>{category}</span>
+  );
+}
+
+interface SellForm {
+  quantity: string;
+  price: string;
+  fee: string;
+  date: string;
+}
+
+function SellPopover({
+  position,
+  form,
+  setForm,
+  onClose,
+  onSubmit,
+  loading,
+  accountCurrency,
+}: {
+  position: Position;
+  form: SellForm;
+  setForm: (f: SellForm) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  loading: boolean;
+  accountCurrency: string;
+}) {
+  const qty = Number(form.quantity) || 0;
+  const price = Number(form.price) || 0;
+  const fee = Number(form.fee) || 0;
+  const gross = qty * price;
+  const net = gross - fee;
+  const costBasis = qty * position.cost_per_share;
+  const pnl = net - costBasis;
+
+  return (
+    <div className="absolute right-4 top-10 z-20 w-80 bg-gray-900 border border-gray-600 rounded-lg shadow-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-semibold text-white">
+          Sell {position.symbol} <span className="text-gray-400 font-normal">({position.quantity} held)</span>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none">×</button>
+      </div>
+
+      <div className="space-y-2">
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Quantity to Sell</label>
+          <input
+            type="number"
+            step="0.0001"
+            min="0"
+            max={position.quantity}
+            className="w-full bg-gray-800 rounded px-2 py-1.5 text-white text-sm border border-gray-700 focus:outline-none focus:border-amber-500"
+            value={form.quantity}
+            onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Selling Price ({position.currency})</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            className="w-full bg-gray-800 rounded px-2 py-1.5 text-white text-sm border border-gray-700 focus:outline-none focus:border-amber-500"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Transaction Fee ({position.currency})</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            className="w-full bg-gray-800 rounded px-2 py-1.5 text-white text-sm border border-gray-700 focus:outline-none focus:border-amber-500"
+            value={form.fee}
+            onChange={(e) => setForm({ ...form, fee: e.target.value })}
+            placeholder="0.00"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Sale Date</label>
+          <input
+            type="date"
+            className="w-full bg-gray-800 rounded px-2 py-1.5 text-white text-sm border border-gray-700 focus:outline-none focus:border-amber-500"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-gray-700 space-y-1 text-xs">
+        <div className="flex justify-between text-gray-400">
+          <span>Gross Proceeds</span>
+          <span className="font-mono text-gray-300">{position.currency} {gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className="flex justify-between text-gray-400">
+          <span>Less Fee</span>
+          <span className="font-mono text-red-400">−{fee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className="flex justify-between font-semibold">
+          <span className="text-green-400">Cash Deposit → {accountCurrency}</span>
+          <span className="font-mono text-green-400">{net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className={`flex justify-between ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+          <span>Realised P&amp;L</span>
+          <span className="font-mono">{pnl >= 0 ? "+" : ""}{pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={onSubmit}
+          disabled={loading || !qty || qty > position.quantity}
+          className="flex-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded text-sm font-medium transition-colors"
+        >
+          Confirm Sale
+        </button>
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }

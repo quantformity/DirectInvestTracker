@@ -1,9 +1,26 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Position, Account, CategoryEnum
 from app.schemas import PositionCreate, PositionUpdate, PositionOut
+
+
+class PositionSell(BaseModel):
+    quantity: float = Field(gt=0)
+    price: float = Field(ge=0)
+    fee: float = Field(ge=0, default=0.0)
+    date: date = Field(default_factory=date.today)
+
+
+class PositionSellResponse(BaseModel):
+    position_id: int | None  # None if position was fully sold and deleted
+    remaining_quantity: float
+    net_cash: float
+    currency: str
 
 router = APIRouter()
 
@@ -105,3 +122,54 @@ def delete_position(position_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Position not found")
     db.delete(position)
     db.commit()
+
+
+@router.post("/{position_id}/sell", response_model=PositionSellResponse)
+def sell_position(position_id: int, payload: PositionSell, db: Session = Depends(get_db)):
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(status_code=404, detail="Position not found")
+
+    if position.category not in (CategoryEnum.Equity, CategoryEnum.GIC):
+        raise HTTPException(status_code=422, detail="Only Equity or GIC positions can be sold")
+
+    if payload.quantity > position.quantity:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot sell {payload.quantity}; only {position.quantity} held",
+        )
+
+    account = db.query(Account).filter(Account.id == position.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    net_cash = payload.quantity * payload.price - payload.fee
+
+    # Create cash deposit for net proceeds
+    cash_deposit = Position(
+        account_id=position.account_id,
+        symbol="CASH",
+        category=CategoryEnum.Cash,
+        quantity=net_cash,
+        cost_per_share=1.0,
+        currency=account.base_currency,
+        date_added=payload.date,
+    )
+    db.add(cash_deposit)
+
+    remaining = position.quantity - payload.quantity
+    if remaining <= 0:
+        db.delete(position)
+        result_id: int | None = None
+    else:
+        position.quantity = remaining
+        result_id = position.id
+
+    db.commit()
+
+    return PositionSellResponse(
+        position_id=result_id,
+        remaining_quantity=remaining,
+        net_cash=net_cash,
+        currency=account.base_currency,
+    )

@@ -39,6 +39,13 @@ export interface Position {
   currency: string;
 }
 
+export interface SellPositionResponse {
+  position_id: number | null;
+  remaining_quantity: number;
+  net_cash: number;
+  currency: string;
+}
+
 export interface MarketData {
   symbol: string;
   company_name: string | null;
@@ -217,6 +224,8 @@ export const api = {
   updatePosition: (id: number, data: Partial<Position>) =>
     client.put<Position>(`/positions/${id}`, data).then((r) => r.data),
   deletePosition: (id: number) => client.delete(`/positions/${id}`),
+  sellPosition: (id: number, data: { quantity: number; price: number; fee: number; date: string }) =>
+    client.post<SellPositionResponse>(`/positions/${id}/sell`, data).then((r) => r.data),
 
   // Market Data
   getMarketData: () => client.get<MarketData[]>("/market-data/").then((r) => r.data),
