@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { PositionManager } from "./pages/PositionManager";
 import { PositionList } from "./pages/PositionList";
 import { Summary } from "./pages/Summary";
+import { AccountSummary } from "./pages/AccountSummary";
 import { MarketInsights } from "./pages/MarketInsights";
 import { History } from "./pages/History";
 import { Report } from "./pages/Report";
@@ -87,6 +88,7 @@ export default function App() {
           <Route index element={<PositionManager />} />
           <Route path="positions" element={<PositionList />} />
           <Route path="summary" element={<Summary />} />
+          <Route path="account-summary" element={<AccountSummary />} />
           <Route path="market" element={<MarketInsights />} />
           <Route path="history" element={<History />} />
           <Route path="sector" element={<SectorMappingPage />} />
