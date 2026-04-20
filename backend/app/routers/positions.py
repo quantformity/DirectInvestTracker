@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ class PositionSell(BaseModel):
     quantity: float = Field(gt=0)
     price: float = Field(ge=0)
     fee: float = Field(ge=0, default=0.0)
-    date: date = Field(default_factory=date.today)
+    date: date_type = Field(default_factory=date_type.today)
 
 
 class PositionSellResponse(BaseModel):
