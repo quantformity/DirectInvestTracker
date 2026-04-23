@@ -1,6 +1,16 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Per-account market insight data
+
+private struct AccountInsight: Identifiable {
+    let id: String      // account name
+    let name: String
+    var mtmReporting: Double
+    var oneDayPnL: Double
+    var overallPnL: Double
+}
+
 // MARK: - Per-symbol market insight data
 
 private struct SymbolInsight: Identifiable {
@@ -31,6 +41,7 @@ struct MarketInsightRootView: View {
     @Query private var sectorMappings: [SectorMapping]
 
     @State private var insights: [SymbolInsight] = []
+    @State private var accountInsights: [AccountInsight] = []
     @State private var totalMTM:   Double = 0
     @State private var totalPnL:   Double = 0
     @State private var todayPnL:   Double = 0
@@ -62,6 +73,23 @@ struct MarketInsightRootView: View {
                             data: insights.sorted { $0.overallPnL > $1.overallPnL },
                             valueKey: \.overallPnL
                         )
+                        if accountInsights.count > 1 {
+                            accountBarChartSection(
+                                title: "MTM by Account",
+                                data: accountInsights.sorted { $0.mtmReporting > $1.mtmReporting },
+                                valueKey: \.mtmReporting
+                            )
+                            accountBarChartSection(
+                                title: "1-Day PnL by Account",
+                                data: accountInsights.sorted { $0.oneDayPnL > $1.oneDayPnL },
+                                valueKey: \.oneDayPnL
+                            )
+                            accountBarChartSection(
+                                title: "Overall PnL by Account",
+                                data: accountInsights.sorted { $0.overallPnL > $1.overallPnL },
+                                valueKey: \.overallPnL
+                            )
+                        }
                         marketCardsSection
                     }
                 }
@@ -184,6 +212,81 @@ struct MarketInsightRootView: View {
         .padding(.vertical, 8)
     }
 
+    // MARK: - Account ranked list
+
+    private func accountBarChartSection(
+        title: String,
+        data: [AccountInsight],
+        valueKey: KeyPath<AccountInsight, Double>
+    ) -> some View {
+        let maxAbs = data.map { Swift.abs($0[keyPath: valueKey]) }.max() ?? 1
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.headline)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
+            ForEach(Array(data.enumerated()), id: \.element.id) { index, item in
+                accountRankedRow(rank: index + 1, name: item.name,
+                                 value: item[keyPath: valueKey], maxAbs: maxAbs)
+                if index < data.count - 1 {
+                    Divider().padding(.leading, 56)
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
+    }
+
+    private func accountRankedRow(rank: Int, name: String, value: Double, maxAbs: Double) -> some View {
+        let positive = value >= 0
+        let barColor = positive ? Color.purple : Color.red
+        let fraction = maxAbs > 0 ? Swift.abs(value) / maxAbs : 0
+
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("#\(rank)")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 28, alignment: .trailing)
+                Text(name)
+                    .font(.subheadline.bold())
+                Spacer()
+                Text(compactValue(value))
+                    .font(.subheadline.bold())
+                    .foregroundStyle(positive ? .purple : .red)
+                    .monospacedDigit()
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(barColor.opacity(0.12))
+                        .frame(maxWidth: .infinity)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(LinearGradient(
+                            colors: positive
+                                ? [Color.purple.opacity(0.45), Color.purple.opacity(0.7)]
+                                : [Color.red.opacity(0.5), Color.red.opacity(0.75)],
+                            startPoint: .leading, endPoint: .trailing
+                        ))
+                        .frame(width: max(geo.size.width * fraction, 4))
+                    Text(name)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                }
+            }
+            .frame(height: 16)
+            .padding(.leading, 36)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
     private func compactValue(_ v: Double) -> String {
         let abs = Swift.abs(v)
         let sign = v < 0 ? "-" : (v > 0 ? "+" : "")
@@ -288,6 +391,29 @@ struct MarketInsightRootView: View {
 
         todayPnL = todayTotal
         insights = result
+
+        // ── Account-level insights ────────────────────────────────────────────
+        var accGroups: [String: [EnrichedPosition]] = [:]
+        for e in enriched { accGroups[e.accountName, default: []].append(e) }
+
+        accountInsights = accGroups.map { (accountName, eps) in
+            let mtm = eps.reduce(0) { $0 + $1.mtmReporting }
+            let pnl = eps.reduce(0) { $0 + $1.pnlReporting }
+
+            // 1-Day PnL: sum equity symbols in this account
+            let equityEps = eps.filter { $0.category == .equity }
+            let equitySymbols = Set(equityEps.map { $0.symbol })
+            let oneDayPnL = equitySymbols.reduce(0.0) { sum, symbol in
+                guard let pct = mdMap[symbol]?.changePercent else { return sum }
+                let eligible = equityEps
+                    .filter { $0.symbol == symbol && Calendar.current.startOfDay(for: $0.dateAdded) < today }
+                    .reduce(0) { $0 + $1.mtmReporting }
+                return sum + (pct / 100.0) * eligible
+            }
+
+            return AccountInsight(id: accountName, name: accountName,
+                                  mtmReporting: mtm, oneDayPnL: oneDayPnL, overallPnL: pnl)
+        }
     }
 
     private func latestPrices() -> [String: Double] {

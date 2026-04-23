@@ -255,6 +255,41 @@ export function MarketInsights() {
     }))
     .sort((a, b) => b.value - a.value);
 
+  // ── Account-level datasets ──────────────────────────────────────────────────
+
+  const accountNames = [...new Set(positions.map((p) => p.account_name))];
+
+  const accountMtmData: ChartPoint[] = accountNames
+    .map((name) => ({
+      symbol: name,
+      value: positions.filter((p) => p.account_name === name).reduce((s, p) => s + p.mtm_reporting, 0),
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const account1dPnlData: ChartPoint[] = accountNames
+    .map((name) => {
+      const equitySymbols = [...new Set(
+        positions.filter((p) => p.account_name === name && p.category === "Equity").map((p) => p.symbol)
+      )];
+      const value = equitySymbols.reduce((sum, symbol) => {
+        const md = marketData.find((m) => m.symbol === symbol);
+        if (md?.change_percent == null) return sum;
+        const eligibleMtm = positions
+          .filter((p) => p.account_name === name && p.symbol === symbol && p.date_added !== today)
+          .reduce((s, p) => s + p.mtm_reporting, 0);
+        return sum + (md.change_percent / 100) * eligibleMtm;
+      }, 0);
+      return { symbol: name, value };
+    })
+    .sort((a, b) => b.value - a.value);
+
+  const accountOverallPnlData: ChartPoint[] = accountNames
+    .map((name) => ({
+      symbol: name,
+      value: positions.filter((p) => p.account_name === name).reduce((s, p) => s + p.pnl_reporting, 0),
+    }))
+    .sort((a, b) => b.value - a.value);
+
   // Total 1-day PnL banner
   const total1dPnl = oneDayData.reduce((s, d) => s + d.value, 0);
   const has1dData  = oneDayData.length > 0;
@@ -361,7 +396,7 @@ export function MarketInsights() {
         </div>
       ) : (
         <>
-          {/* ── Bar charts ── */}
+          {/* ── Bar charts — by symbol ── */}
           <div className="grid grid-cols-1 gap-4 mb-6">
             <InsightBarChart
               title="Mark-to-Market by Symbol"
@@ -385,6 +420,33 @@ export function MarketInsights() {
               colorNegative="#ef4444"
             />
           </div>
+
+          {/* ── Bar charts — by account ── */}
+          {accountNames.length > 1 && (
+            <div className="grid grid-cols-1 gap-4 mb-6">
+              <InsightBarChart
+                title="Mark-to-Market by Account"
+                data={accountMtmData}
+                currency={reportingCurrency}
+                colorMode="flat"
+                colorPositive="#8b5cf6"
+              />
+              <InsightBarChart
+                title="1-Day PnL by Account"
+                data={account1dPnlData}
+                currency={reportingCurrency}
+                colorPositive="#22c55e"
+                colorNegative="#ef4444"
+              />
+              <InsightBarChart
+                title="Overall PnL by Account"
+                data={accountOverallPnlData}
+                currency={reportingCurrency}
+                colorPositive="#22c55e"
+                colorNegative="#ef4444"
+              />
+            </div>
+          )}
 
           {/* ── Market cards ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
