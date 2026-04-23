@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -127,7 +127,7 @@
 		DAE35EE73E8B5255856B1401 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		DD9560106E17F11CF9CE1D9B /* PositionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PositionListView.swift; sourceTree = "<group>"; };
 		DEB464374119E0184666D180 /* SQLiteImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteImportService.swift; sourceTree = "<group>"; };
-		E04B112F3A65CB7C3FF652DB /* DirectInvestTracker.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DirectInvestTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E04B112F3A65CB7C3FF652DB /* DirectInvestTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DirectInvestTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E332F64891AB488BCDEC575C /* Position.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Position.swift; sourceTree = "<group>"; };
 		F28DF1BDEFDFACE45414AD03 /* HistoryPoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPoint.swift; sourceTree = "<group>"; };
 		F4959240F4160499FB1EFE02 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
@@ -541,6 +541,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GL99U6C889;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DirectInvestTracker/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -626,6 +627,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GL99U6C889;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DirectInvestTracker/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
