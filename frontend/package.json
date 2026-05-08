@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.4",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -13,8 +13,8 @@
     "preview": "vite preview"
   },
   "build": {
-    "appId": "com.qfdirectinvesttracker.app",
-    "productName": "Qf Direct Invest Tracker",
+    "appId": "com.directinvest.app",
+    "productName": "DirectInvest",
     "icon": "build/icon",
     "directories": {
       "output": "release"

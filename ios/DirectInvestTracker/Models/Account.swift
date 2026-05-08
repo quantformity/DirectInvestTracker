@@ -6,6 +6,7 @@ final class Account {
     var id: UUID
     var name: String
     var baseCurrency: String
+    var pythonId: Int?
 
     @Relationship(deleteRule: .cascade, inverse: \Position.account)
     var positions: [Position]

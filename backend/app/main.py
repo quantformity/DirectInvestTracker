@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.services.scheduler import start_scheduler, shutdown_scheduler
-from app.routers import accounts, positions, market_data, fx_rates, summary, history, ai, settings, sector
+from app.routers import accounts, positions, market_data, fx_rates, summary, history, ai, settings, sector, realized_pnl
 
 
 def _read_version() -> str:
@@ -42,8 +42,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Qf Direct Invest Tracker API",
-    description="Backend for the Qf Direct Invest Tracker portfolio tracker",
+    title="DirectInvest API",
+    description="Backend for the DirectInvest portfolio tracker",
     version=_read_version(),
     lifespan=lifespan,
 )
@@ -66,8 +66,9 @@ app.include_router(history.router, prefix="/history", tags=["History"])
 app.include_router(ai.router, prefix="/ai", tags=["AI"])
 app.include_router(settings.router, prefix="/settings", tags=["Settings"])
 app.include_router(sector.router, prefix="/sector", tags=["Sector"])
+app.include_router(realized_pnl.router, prefix="/realized-pnl", tags=["Realized PnL"])
 
 
 @app.get("/", tags=["Health"])
 def root():
-    return {"status": "ok", "message": "Qf Direct Invest Tracker API running"}
+    return {"status": "ok", "message": "DirectInvest API running"}

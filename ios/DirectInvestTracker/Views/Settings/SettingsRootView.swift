@@ -14,14 +14,18 @@ struct SettingsRootView: View {
     @State private var isRefreshing = false
     @State private var errorMessage: String? = nil
 
-    // Import
-    @State private var showImportPicker = false
-    @State private var isImporting = false
-    @State private var importResultMessage: String? = nil
-    @State private var showImportConfirm = false
-    @State private var pendingImportURL: URL? = nil
+    // iCloud sync — link picker
+    @State private var showLinkPicker = false
+    @State private var pendingLinkURL: URL? = nil
+    @State private var showLinkConfirm = false
+
+    // iCloud sync — export
+    @State private var isExporting = false
+    @State private var showExportShare = false
+    @State private var exportTempURL: URL? = nil
 
     var body: some View {
+        let iCloudService = appContainer.iCloudService
         NavigationStack {
             Form {
                 Section("Reporting Currency") {
@@ -41,22 +45,64 @@ struct SettingsRootView: View {
                     }
                 }
 
-                Section("Import Data") {
-                    Button {
-                        showImportPicker = true
-                    } label: {
-                        HStack {
-                            if isImporting { ProgressView().padding(.trailing, 4) }
-                            Label(isImporting ? "Importing…" : "Import from investments.db",
-                                  systemImage: "square.and.arrow.down")
+                Section("iCloud Database Sync") {
+                    // Linked file row
+                    HStack {
+                        Label(
+                            iCloudService.linkedURL?.lastPathComponent ?? "Not linked",
+                            systemImage: iCloudService.linkedURL != nil ? "link" : "link.badge.plus"
+                        )
+                        Spacer()
+                        if iCloudService.linkedURL != nil {
+                            Button("Unlink") { iCloudService.unlink() }
+                                .foregroundStyle(.red)
+                                .buttonStyle(.borderless)
                         }
                     }
-                    .disabled(isImporting)
 
-                    if let msg = importResultMessage {
-                        Text(msg)
+                    // Link / Sync buttons
+                    if iCloudService.linkedURL == nil {
+                        Button {
+                            showLinkPicker = true
+                        } label: {
+                            Label("Link Database File…", systemImage: "square.and.arrow.down")
+                        }
+                    } else {
+                        Button {
+                            Task { await iCloudService.checkAndSyncIfNeeded(context: modelContext) }
+                        } label: {
+                            HStack {
+                                if iCloudService.isSyncing {
+                                    ProgressView().padding(.trailing, 4)
+                                }
+                                Text(iCloudService.isSyncing ? "Syncing…" : "Sync Now")
+                            }
+                        }
+                        .disabled(iCloudService.isSyncing)
+                    }
+
+                    // Export to new file
+                    Button {
+                        Task { await exportToTemp() }
+                    } label: {
+                        HStack {
+                            if isExporting { ProgressView().padding(.trailing, 4) }
+                            Label(isExporting ? "Preparing…" : "Export to New File…",
+                                  systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    .disabled(isExporting)
+
+                    // Status messages
+                    if let d = iCloudService.lastSyncDate {
+                        Text("Last sync: \(d.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    if let err = iCloudService.syncError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     }
                 }
 
@@ -86,38 +132,55 @@ struct SettingsRootView: View {
                 ErrorBannerView(message: error) { errorMessage = nil }
             }
         }
+        // Link file picker
         .fileImporter(
-            isPresented: $showImportPicker,
+            isPresented: $showLinkPicker,
             allowedContentTypes: [UTType.data, UTType.item],
             allowsMultipleSelection: false
         ) { result in
             guard case .success(let urls) = result, let url = urls.first else { return }
-            pendingImportURL = url
-            showImportConfirm = true
+            pendingLinkURL = url
+            showLinkConfirm = true
         }
         .confirmationDialog(
-            "Replace all existing data with the contents of \(pendingImportURL?.lastPathComponent ?? "the file")?",
-            isPresented: $showImportConfirm,
+            "Link \(pendingLinkURL?.lastPathComponent ?? "this file") as the shared database?\nChanges on iOS will be written back to this file.",
+            isPresented: $showLinkConfirm,
             titleVisibility: .visible
         ) {
-            Button("Import & Replace", role: .destructive) {
-                if let url = pendingImportURL { Task { await runImport(url: url) } }
+            Button("Link & Sync Now") {
+                if let url = pendingLinkURL {
+                    appContainer.iCloudService.link(url: url)
+                    Task {
+                        await appContainer.iCloudService.checkAndSyncIfNeeded(context: modelContext)
+                    }
+                }
+                pendingLinkURL = nil
             }
-            Button("Cancel", role: .cancel) { pendingImportURL = nil }
+            Button("Cancel", role: .cancel) { pendingLinkURL = nil }
+        }
+        // Export share sheet
+        .sheet(isPresented: $showExportShare) {
+            if let url = exportTempURL {
+                ShareSheet(url: url)
+            }
         }
     }
 
-    private func runImport(url: URL) async {
-        isImporting = true
-        importResultMessage = nil
-        defer { isImporting = false }
+    // MARK: - Actions
+
+    private func exportToTemp() async {
+        isExporting = true
+        defer { isExporting = false }
+        let ts = Int(Date().timeIntervalSince1970)
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("investments_\(ts).db")
         do {
-            let summary = try SQLiteImportService.importFile(url: url, context: modelContext)
-            importResultMessage = summary.description
+            try await appContainer.iCloudService.exportTo(url: tempURL, context: modelContext)
+            exportTempURL = tempURL
+            showExportShare = true
         } catch {
-            importResultMessage = "Import failed: \(error.localizedDescription)"
+            errorMessage = "Export failed: \(error.localizedDescription)"
         }
-        pendingImportURL = nil
     }
 
     private func refresh() async {
@@ -129,6 +192,18 @@ struct SettingsRootView: View {
         lastRefreshDate = AppSettingsStore.lastRefreshDate
         if let err = appContainer.refreshService.lastError { errorMessage = err }
     }
+}
+
+// MARK: - Share sheet
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uvc: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Sector Mapping list (inline, avoids the Bindable ViewModel dependency)

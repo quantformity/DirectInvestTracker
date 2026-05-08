@@ -3,10 +3,12 @@ import SwiftData
 
 struct PositionListView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppContainer.self) private var appContainer
     let account: Account
 
     @Query private var positions: [Position]
     @State private var showAddPosition = false
+    @State private var showAddTransaction = false
     @State private var positionToEdit: Position? = nil
     @State private var positionToSell: Position? = nil
     @State private var expandedPositionId: UUID? = nil
@@ -96,7 +98,18 @@ struct PositionListView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: { showAddPosition = true }) {
+                Menu {
+                    Button {
+                        showAddPosition = true
+                    } label: {
+                        Label("Add Position", systemImage: "chart.bar")
+                    }
+                    Button {
+                        showAddTransaction = true
+                    } label: {
+                        Label("Cash Transaction", systemImage: "dollarsign.circle")
+                    }
+                } label: {
                     Image(systemName: "plus")
                 }
             }
@@ -122,6 +135,22 @@ struct PositionListView: View {
         .sheet(item: $positionToSell) { position in
             SellPositionView(position: position) { qty, price, fee, date in
                 try sellPosition(position, quantity: qty, price: price, fee: fee, date: date)
+            }
+        }
+        .sheet(isPresented: $showAddTransaction) {
+            TransactionFormView(account: account) { amount, _, date in
+                let cashPosition = Position(
+                    symbol: "CASH",
+                    category: Category.cash.rawValue,
+                    quantity: amount,
+                    costPerShare: 1.0,
+                    dateAdded: date,
+                    currency: account.baseCurrency,
+                    account: account
+                )
+                modelContext.insert(cashPosition)
+                try? modelContext.save()
+                appContainer.iCloudService.scheduleExport(context: modelContext)
             }
         }
         if let error = errorMessage {
@@ -163,42 +192,57 @@ struct PositionListView: View {
         modelContext.insert(position)
 
         if (category == .equity || category == .gic) && quantity > 0 {
-            let withdrawal = Position(
-                symbol: "CASH",
-                category: Category.cash.rawValue,
-                quantity: -(quantity * costPerShare),
-                costPerShare: 1.0,
-                dateAdded: dateAdded,
-                currency: account.baseCurrency,
-                account: account
-            )
-            modelContext.insert(withdrawal)
+            let totalCostInStockCcy = quantity * costPerShare
+            let acctCurrency = account.baseCurrency
+            Task { @MainActor in
+                let fx = await appContainer.fxService.ensuredRate(from: currency, to: acctCurrency, context: modelContext)
+                let withdrawal = Position(
+                    symbol: "CASH",
+                    category: Category.cash.rawValue,
+                    quantity: -(totalCostInStockCcy * fx),
+                    costPerShare: 1.0,
+                    dateAdded: dateAdded,
+                    currency: acctCurrency,
+                    account: account
+                )
+                modelContext.insert(withdrawal)
+                try? modelContext.save()
+                appContainer.iCloudService.scheduleExport(context: modelContext)
+            }
+        } else {
+            try? modelContext.save()
         }
-        try? modelContext.save()
     }
 
     private func sellPosition(_ position: Position, quantity: Double, price: Double, fee: Double, date: Date) throws {
         guard quantity <= position.quantity else {
             throw PositionError.insufficientQuantity(held: position.quantity, requested: quantity)
         }
-        let netCash = quantity * price - fee
-        let deposit = Position(
-            symbol: "CASH",
-            category: Category.cash.rawValue,
-            quantity: netCash,
-            costPerShare: 1.0,
-            dateAdded: date,
-            currency: account.baseCurrency,
-            account: account
-        )
-        modelContext.insert(deposit)
+        let netCashInStockCcy = quantity * price - fee
+        let stockCurrency = position.currency
+        let acctCurrency = account.baseCurrency
 
         if position.quantity - quantity <= 0 {
             modelContext.delete(position)
         } else {
             position.quantity -= quantity
         }
-        try? modelContext.save()
+
+        Task { @MainActor in
+            let fx = await appContainer.fxService.ensuredRate(from: stockCurrency, to: acctCurrency, context: modelContext)
+            let deposit = Position(
+                symbol: "CASH",
+                category: Category.cash.rawValue,
+                quantity: netCashInStockCcy * fx,
+                costPerShare: 1.0,
+                dateAdded: date,
+                currency: acctCurrency,
+                account: account
+            )
+            modelContext.insert(deposit)
+            try? modelContext.save()
+            appContainer.iCloudService.scheduleExport(context: modelContext)
+        }
     }
 
     private func delete(_ position: Position) {

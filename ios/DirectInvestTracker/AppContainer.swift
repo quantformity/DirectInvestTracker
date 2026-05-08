@@ -9,6 +9,7 @@ class AppContainer {
     let fxService: FxService
     let historyService: HistoryService
     let refreshService: MarketDataRefreshService
+    let iCloudService: iCloudDatabaseService
 
     private let modelContext: ModelContext
     private var autoRefreshTask: Task<Void, Never>? = nil
@@ -26,6 +27,7 @@ class AppContainer {
         self.modelContext   = ctx
         self.historyService = HistoryService(yahoo: yahoo, modelContext: ctx)
         self.refreshService = MarketDataRefreshService(yahoo: yahoo, fxService: fx, modelContext: ctx)
+        self.iCloudService  = iCloudDatabaseService()
 
         if AppSettingsStore.autoRefreshEnabled {
             startAutoRefresh()

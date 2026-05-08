@@ -6,6 +6,7 @@ interface ElectronAPI {
     getPath:    () => Promise<string>;
     selectFile: () => Promise<string | null>;
     setPath:    (newPath: string) => Promise<string>;
+    switch:     (newPath: string) => Promise<void>;
   };
   app: {
     relaunch: () => Promise<void>;

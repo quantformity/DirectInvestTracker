@@ -199,6 +199,32 @@ export interface SectorMapping {
   sector: string;
 }
 
+export interface SellTransactionOut {
+  id: number;
+  account_id: number;
+  account_name: string;
+  symbol: string;
+  category: string;
+  quantity: number;
+  sell_price: number;
+  cost_per_share: number;
+  fee: number;
+  date: string;
+  stock_currency: string;
+  account_currency: string;
+  realized_pnl_stock: number;
+  realized_pnl_account: number;
+  realized_pnl_reporting: number;
+  fx_stock_to_account: number;
+  fx_account_to_reporting: number;
+}
+
+export interface RealizedPnLOut {
+  transactions: SellTransactionOut[];
+  total_realized_pnl_reporting: number;
+  reporting_currency: string;
+}
+
 export interface FxMatrix {
   currencies: string[];
   matrix: Record<string, Record<string, number | null>>;
@@ -276,6 +302,10 @@ export const api = {
     aiClient.post<ActionPlan>("/ai/action/plan", { message }).then((r) => r.data),
   executeAction: (action: string, params: Record<string, unknown>) =>
     aiClient.post<ExecuteActionResponse>("/ai/action/execute", { action, params }).then((r) => r.data),
+
+  // Realized PnL
+  getRealizedPnL: (account_id?: number) =>
+    client.get<RealizedPnLOut>("/realized-pnl/", { params: account_id != null ? { account_id } : {} }).then((r) => r.data),
 
   // Settings
   getSettings: () =>

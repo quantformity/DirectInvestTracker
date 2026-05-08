@@ -74,3 +74,25 @@ class SectorMapping(Base):
 
     symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
     sector: Mapped[str] = mapped_column(String(100), nullable=False, default="Unspecified")
+
+
+class SellTransaction(Base):
+    __tablename__ = "sell_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    account_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    sell_price: Mapped[float] = mapped_column(Float, nullable=False)
+    cost_per_share: Mapped[float] = mapped_column(Float, nullable=False)
+    fee: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    stock_currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    account_currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    realized_pnl_stock: Mapped[float] = mapped_column(Float, nullable=False)
+    realized_pnl_account: Mapped[float] = mapped_column(Float, nullable=False)
+    realized_pnl_reporting: Mapped[float] = mapped_column(Float, nullable=False)
+    fx_stock_to_account: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    fx_account_to_reporting: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)

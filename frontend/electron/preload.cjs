@@ -4,9 +4,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
 
   db: {
-    getPath:    ()          => ipcRenderer.invoke("db:get-path"),
-    selectFile: ()          => ipcRenderer.invoke("db:select-file"),
-    setPath:    (newPath)   => ipcRenderer.invoke("db:set-path", newPath),
+    getPath:    ()        => ipcRenderer.invoke("db:get-path"),
+    selectFile: ()        => ipcRenderer.invoke("db:select-file"),
+    setPath:    (newPath) => ipcRenderer.invoke("db:set-path", newPath),
+    switch:     (newPath) => ipcRenderer.invoke("db:switch", newPath),
   },
 
   app: {

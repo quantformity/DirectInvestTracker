@@ -189,8 +189,8 @@ export function OllamaSettingsModal({ onClose }: Props) {
   const handleApplyDb = async () => {
     if (!pendingDbPath) return;
     setRelaunching(true);
-    await window.electronAPI!.db.setPath(pendingDbPath);
-    await window.electronAPI!.app.relaunch();
+    await window.electronAPI!.db.switch(pendingDbPath);
+    window.location.reload();
   };
 
   const handleSave = async () => {
@@ -536,12 +536,12 @@ export function OllamaSettingsModal({ onClose }: Props) {
                   disabled={relaunching}
                   className="w-full px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
                 >
-                  {relaunching ? "Restarting…" : "Apply & Restart App"}
+                  {relaunching ? "Applying…" : "Apply & Reload"}
                 </button>
               )}
 
               <p className="text-xs text-gray-500">
-                The app will restart to load data from the new location. The existing file is not moved or deleted.
+                The backend will reload with the selected file. The existing file is not moved or deleted.
               </p>
             </div>
           </>

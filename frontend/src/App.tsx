@@ -4,6 +4,7 @@ import { PositionManager } from "./pages/PositionManager";
 import { PositionList } from "./pages/PositionList";
 import { Summary } from "./pages/Summary";
 import { AccountSummary } from "./pages/AccountSummary";
+import { RealizedPnL } from "./pages/RealizedPnL";
 import { MarketInsights } from "./pages/MarketInsights";
 import { History } from "./pages/History";
 import { Report } from "./pages/Report";
@@ -24,7 +25,7 @@ function LoadingScreen({ elapsed, timedOut }: { elapsed: number; timedOut: boole
       {/* App name */}
       <div className="mb-8 text-center">
         <div className="text-2xl font-bold text-white tracking-tight">
-          Qf Direct Invest Tracker
+          DirectInvest
         </div>
         <div className="text-xs text-gray-500 mt-1">Personal Portfolio Manager</div>
       </div>
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="positions" element={<PositionList />} />
           <Route path="summary" element={<Summary />} />
           <Route path="account-summary" element={<AccountSummary />} />
+          <Route path="realized-pnl" element={<RealizedPnL />} />
           <Route path="market" element={<MarketInsights />} />
           <Route path="history" element={<History />} />
           <Route path="sector" element={<SectorMappingPage />} />

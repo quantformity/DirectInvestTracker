@@ -1,11 +1,11 @@
 const { app, BrowserWindow, shell, ipcMain, dialog, Menu } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const http = require("http");
 
 // Ensure userData folder uses the product name, not the package "name" field.
-app.setName("Qf Direct Invest Tracker");
+app.setName("DirectInvest");
 
 const isDev = process.env.NODE_ENV !== "production" && !app.isPackaged;
 
@@ -36,6 +36,16 @@ function getDbPath() {
 }
 
 // ── Backend process management ────────────────────────────────────────────────
+
+function killPortProcess(port) {
+  try {
+    if (process.platform === "win32") {
+      execSync(`for /f "tokens=5" %a in ('netstat -aon ^| find ":${port}"') do taskkill /F /PID %a`, { shell: true, stdio: "ignore" });
+    } else {
+      execSync(`lsof -ti :${port} | xargs kill -9`, { stdio: "ignore" });
+    }
+  } catch { /* nothing on port, or kill failed — fine either way */ }
+}
 
 function getBackendBinPath() {
   if (isDev) return null;
@@ -84,39 +94,46 @@ function startBackend() {
       return;
     }
 
-    const dbPath = getDbPath().replace(/\\/g, "/");
-    const dbUrl = `sqlite:///${dbPath}`;
+    // Kill any stale process on port 8000 (orphaned backends, dev uvicorn, etc.)
+    // so the fresh backend can always bind its port cleanly.
+    killPortProcess(8000);
 
-    // Ensure the database directory exists
-    const dbDir = path.dirname(dbPath);
-    if (dbDir) fs.mkdirSync(dbDir, { recursive: true });
+    // Give the OS 500 ms to release the port before spawning.
+    setTimeout(() => {
+      const dbPath = getDbPath().replace(/\\/g, "/");
+      const dbUrl = `sqlite:///${dbPath}`;
 
-    const logPath = path.join(app.getPath("userData"), "backend.log");
-    // Use openSync so the fd is immediately available for spawn.
-    const logFd = fs.openSync(logPath, "w");
+      // Ensure the database directory exists
+      const dbDir = path.dirname(dbPath);
+      if (dbDir) fs.mkdirSync(dbDir, { recursive: true });
 
-    backendProcess = spawn(binPath, [], {
-      env: { ...process.env, DATABASE_URL: dbUrl, PORT: "8000" },
-      stdio: ["ignore", logFd, logFd],
-    });
+      const logPath = path.join(app.getPath("userData"), "backend.log");
+      // Use openSync so the fd is immediately available for spawn.
+      const logFd = fs.openSync(logPath, "w");
 
-    // Close our copy of the fd — the child process keeps its own.
-    fs.closeSync(logFd);
+      backendProcess = spawn(binPath, [], {
+        env: { ...process.env, DATABASE_URL: dbUrl, PORT: "8000" },
+        stdio: ["ignore", logFd, logFd],
+      });
 
-    backendProcess.on("error", (err) => {
-      reject(new Error(`Failed to start backend: ${err.message}`));
-    });
+      // Close our copy of the fd — the child process keeps its own.
+      fs.closeSync(logFd);
 
-    waitForBackend(8000, 60, (err) => {
-      if (err) {
-        // Attach log path so the error dialog can show it
-        const e = new Error(err.message);
-        e.logPath = logPath;
-        reject(e);
-      } else {
-        resolve();
-      }
-    });
+      backendProcess.on("error", (err) => {
+        reject(new Error(`Failed to start backend: ${err.message}`));
+      });
+
+      waitForBackend(8000, 60, (err) => {
+        if (err) {
+          // Attach log path so the error dialog can show it
+          const e = new Error(err.message);
+          e.logPath = logPath;
+          reject(e);
+        } else {
+          resolve();
+        }
+      });
+    }, 500);
   });
 }
 
@@ -125,6 +142,17 @@ function stopBackend() {
     backendProcess.kill("SIGTERM");
     backendProcess = null;
   }
+}
+
+function stopBackendAndWait() {
+  return new Promise((resolve) => {
+    if (!backendProcess) return resolve();
+    const proc = backendProcess;
+    backendProcess = null;
+    proc.once("exit", resolve);
+    proc.kill("SIGKILL"); // force kill so port 8000 is free before relaunch
+    setTimeout(resolve, 2000); // safety timeout
+  });
 }
 
 // ── Window management ─────────────────────────────────────────────────────────
@@ -199,15 +227,15 @@ function registerIpcHandlers() {
   // Return the current database file path
   ipcMain.handle("db:get-path", () => getDbPath());
 
-  // Open a native save-file dialog so the user can pick a new DB location
+  // Open a native open-file dialog so the user can pick an existing DB to load
   ipcMain.handle("db:select-file", async () => {
-    const result = await dialog.showSaveDialog({
-      title: "Choose database file location",
-      defaultPath: getDbPath(),
+    const result = await dialog.showOpenDialog({
+      title: "Open database file",
+      defaultPath: path.dirname(getDbPath()),
       filters: [{ name: "SQLite Database", extensions: ["db"] }],
-      properties: ["createDirectory"],
+      properties: ["openFile"],
     });
-    return result.canceled ? null : result.filePath;
+    return result.canceled ? null : result.filePaths[0];
   });
 
   // Persist the chosen path to config.json (takes effect on next launch / relaunch)
@@ -216,8 +244,22 @@ function registerIpcHandlers() {
     return newPath;
   });
 
-  // Relaunch the app so the new database path is picked up
-  ipcMain.handle("app:relaunch", () => {
+  // Switch to a new database: save path, stop current backend, start fresh backend
+  // with the new DATABASE_URL. The renderer then reloads itself to pick up new data.
+  // This avoids app.relaunch() which is unreliable (race conditions, env differences).
+  ipcMain.handle("db:switch", async (_event, newPath) => {
+    saveConfig({ dbPath: newPath });
+    if (!getBackendBinPath()) return; // dev mode: config saved, backend not managed here
+    await stopBackendAndWait();
+    await startBackend();
+  });
+
+  // Relaunch the app so the new database path is picked up.
+  // Must kill backend first and wait for port 8000 to free up, otherwise the
+  // new instance spawns a backend that fails to bind and falls back to the
+  // still-running old backend (serving the old database path).
+  ipcMain.handle("app:relaunch", async () => {
+    await stopBackendAndWait();
     app.relaunch();
     app.quit();
   });

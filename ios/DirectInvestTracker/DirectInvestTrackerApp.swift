@@ -17,6 +17,7 @@ struct DirectInvestTrackerApp: App {
             SectorMapping.self,
             PriceCache.self,
             AppSettings.self,
+            SellTransaction.self,
         ])
         let config = ModelConfiguration("DirectInvestTracker", schema: schema)
         do {
@@ -39,6 +40,13 @@ struct DirectInvestTrackerApp: App {
                 .environment(appContainer)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
                     MarketDataBackgroundTask.schedule()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    // Defer to next runloop so modelContext is ready
+                    Task { @MainActor in
+                        let ctx = ModelContext(modelContainer)
+                        await appContainer.iCloudService.checkAndSyncIfNeeded(context: ctx)
+                    }
                 }
         }
     }

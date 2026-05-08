@@ -19,15 +19,17 @@ enum ImportError: LocalizedError {
 // MARK: - Result
 
 struct ImportSummary {
-    let accounts:       Int
-    let positions:      Int
-    let marketData:     Int
-    let fxRates:        Int
-    let sectorMappings: Int
+    let accounts:         Int
+    let positions:        Int
+    let marketData:       Int
+    let fxRates:          Int
+    let sectorMappings:   Int
+    let sellTransactions: Int
 
     var description: String {
         "Imported \(accounts) accounts, \(positions) positions, " +
-        "\(marketData) market quotes, \(fxRates) FX rates, \(sectorMappings) sector mappings."
+        "\(marketData) market quotes, \(fxRates) FX rates, \(sectorMappings) sector mappings, " +
+        "\(sellTransactions) sell transactions."
     }
 }
 
@@ -56,20 +58,23 @@ enum SQLiteImportService {
         let rawMarketData    = try readMarketData(db)
         let rawFxRates       = try readFxRates(db)
         let rawSectorMap     = try readSectorMappings(db)
+        let rawSellTx        = try readSellTransactions(db)
 
         // ── 2. Clear existing SwiftData records ──────────────────────────────
 
-        for p in try context.fetch(FetchDescriptor<Position>())     { context.delete(p) }
-        for a in try context.fetch(FetchDescriptor<Account>())      { context.delete(a) }
-        for m in try context.fetch(FetchDescriptor<MarketData>())   { context.delete(m) }
-        for f in try context.fetch(FetchDescriptor<FxRate>())       { context.delete(f) }
-        for s in try context.fetch(FetchDescriptor<SectorMapping>()){ context.delete(s) }
+        for p in try context.fetch(FetchDescriptor<Position>())        { context.delete(p) }
+        for a in try context.fetch(FetchDescriptor<Account>())        { context.delete(a) }
+        for m in try context.fetch(FetchDescriptor<MarketData>())     { context.delete(m) }
+        for f in try context.fetch(FetchDescriptor<FxRate>())         { context.delete(f) }
+        for s in try context.fetch(FetchDescriptor<SectorMapping>())  { context.delete(s) }
+        for t in try context.fetch(FetchDescriptor<SellTransaction>()){ context.delete(t) }
 
         // ── 3. Insert accounts, build id → Account map ───────────────────────
 
         var accountMap: [Int: Account] = [:]
         for row in rawAccounts {
             let account = Account(name: row.name, baseCurrency: row.baseCurrency)
+            account.pythonId = row.pythonId
             context.insert(account)
             accountMap[row.pythonId] = account
         }
@@ -88,6 +93,7 @@ enum SQLiteImportService {
                 currency:     row.currency,
                 account:      account
             )
+            position.pythonId = row.pythonId
             context.insert(position)
         }
 
@@ -121,14 +127,40 @@ enum SQLiteImportService {
             context.insert(SectorMapping(symbol: row.symbol, sector: row.sector))
         }
 
+        // ── 8. Insert sell transactions ───────────────────────────────────────
+
+        for row in rawSellTx {
+            let tx = SellTransaction(
+                accountId: row.accountId,
+                accountName: row.accountName,
+                symbol: row.symbol,
+                category: row.category,
+                quantity: row.quantity,
+                sellPrice: row.sellPrice,
+                costPerShare: row.costPerShare,
+                fee: row.fee,
+                date: row.date,
+                stockCurrency: row.stockCurrency,
+                accountCurrency: row.accountCurrency,
+                realizedPnlStock: row.realizedPnlStock,
+                realizedPnlAccount: row.realizedPnlAccount,
+                realizedPnlReporting: row.realizedPnlReporting,
+                fxStockToAccount: row.fxStockToAccount,
+                fxAccountToReporting: row.fxAccountToReporting
+            )
+            tx.pythonId = row.pythonId
+            context.insert(tx)
+        }
+
         try context.save()
 
         return ImportSummary(
-            accounts:       rawAccounts.count,
-            positions:      rawPositions.count,
-            marketData:     rawMarketData.count,
-            fxRates:        rawFxRates.count,
-            sectorMappings: rawSectorMap.count
+            accounts:         rawAccounts.count,
+            positions:        rawPositions.count,
+            marketData:       rawMarketData.count,
+            fxRates:          rawFxRates.count,
+            sectorMappings:   rawSectorMap.count,
+            sellTransactions: rawSellTx.count
         )
     }
 
@@ -136,7 +168,7 @@ enum SQLiteImportService {
 
     private struct RawAccount  { let pythonId: Int; let name, baseCurrency: String }
     private struct RawPosition {
-        let accountId: Int; let symbol, category, currency: String
+        let pythonId: Int; let accountId: Int; let symbol, category, currency: String
         let quantity, costPerShare: Double; let dateAdded: Date; let yieldRate: Double?
     }
     private struct RawMarketData {
@@ -145,6 +177,15 @@ enum SQLiteImportService {
     }
     private struct RawFxRate    { let pair: String; let rate: Double; let timestamp: Date }
     private struct RawSectorMap { let symbol, sector: String }
+    private struct RawSellTransaction {
+        let pythonId: Int
+        let accountId: Int; let accountName, symbol, category: String
+        let quantity, sellPrice, costPerShare, fee: Double
+        let date: Date
+        let stockCurrency, accountCurrency: String
+        let realizedPnlStock, realizedPnlAccount, realizedPnlReporting: Double
+        let fxStockToAccount, fxAccountToReporting: Double
+    }
 
     // MARK: - Readers
 
@@ -163,20 +204,21 @@ enum SQLiteImportService {
     private static func readPositions(_ db: OpaquePointer) throws -> [RawPosition] {
         var rows: [RawPosition] = []
         let sql = """
-            SELECT account_id, symbol, category, quantity,
+            SELECT id, account_id, symbol, category, quantity,
                    cost_per_share, date_added, yield_rate, currency
             FROM positions
             """
         try query(db, sql: sql) { stmt in
             rows.append(RawPosition(
-                accountId:    Int(sqlite3_column_int(stmt, 0)),
-                symbol:       string(stmt, 1),
-                category:     string(stmt, 2),
-                currency:     string(stmt, 7),
-                quantity:     sqlite3_column_double(stmt, 3),
-                costPerShare: sqlite3_column_double(stmt, 4),
-                dateAdded:    parseDate(string(stmt, 5)) ?? Date(),
-                yieldRate:    sqlite3_column_type(stmt, 6) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 6)
+                pythonId:     Int(sqlite3_column_int(stmt, 0)),
+                accountId:    Int(sqlite3_column_int(stmt, 1)),
+                symbol:       string(stmt, 2),
+                category:     string(stmt, 3),
+                currency:     string(stmt, 8),
+                quantity:     sqlite3_column_double(stmt, 4),
+                costPerShare: sqlite3_column_double(stmt, 5),
+                dateAdded:    parseDate(string(stmt, 6)) ?? Date(),
+                yieldRate:    sqlite3_column_type(stmt, 7) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 7)
             ))
         }
         return rows
@@ -229,6 +271,43 @@ enum SQLiteImportService {
         var rows: [RawSectorMap] = []
         try query(db, sql: "SELECT symbol, sector FROM sector_mappings") { stmt in
             rows.append(RawSectorMap(symbol: string(stmt, 0), sector: string(stmt, 1)))
+        }
+        return rows
+    }
+
+    private static func readSellTransactions(_ db: OpaquePointer) throws -> [RawSellTransaction] {
+        var rows: [RawSellTransaction] = []
+        // Table may not exist in older databases — silently return empty.
+        var stmt: OpaquePointer?
+        let sql = """
+            SELECT id, account_id, account_name, symbol, category, quantity, sell_price,
+                   cost_per_share, fee, date, stock_currency, account_currency,
+                   realized_pnl_stock, realized_pnl_account, realized_pnl_reporting,
+                   fx_stock_to_account, fx_account_to_reporting
+            FROM sell_transactions
+            """
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            rows.append(RawSellTransaction(
+                pythonId:              Int(sqlite3_column_int(stmt!, 0)),
+                accountId:             Int(sqlite3_column_int(stmt!, 1)),
+                accountName:           string(stmt!, 2),
+                symbol:                string(stmt!, 3),
+                category:              string(stmt!, 4),
+                quantity:              sqlite3_column_double(stmt!, 5),
+                sellPrice:             sqlite3_column_double(stmt!, 6),
+                costPerShare:          sqlite3_column_double(stmt!, 7),
+                fee:                   sqlite3_column_double(stmt!, 8),
+                date:                  parseDate(string(stmt!, 9)) ?? Date(),
+                stockCurrency:         string(stmt!, 10),
+                accountCurrency:       string(stmt!, 11),
+                realizedPnlStock:      sqlite3_column_double(stmt!, 12),
+                realizedPnlAccount:    sqlite3_column_double(stmt!, 13),
+                realizedPnlReporting:  sqlite3_column_double(stmt!, 14),
+                fxStockToAccount:      sqlite3_column_double(stmt!, 15),
+                fxAccountToReporting:  sqlite3_column_double(stmt!, 16)
+            ))
         }
         return rows
     }

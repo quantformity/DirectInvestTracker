@@ -4,9 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from app.database import get_db
-from app.models import Position, Account, CategoryEnum
+import os
+from app.models import Position, Account, CategoryEnum, FxRate, SellTransaction
 from app.schemas import PositionCreate, PositionUpdate, PositionOut
+from app.services.yahoo_finance import fetch_fx_rate
 
 
 class PositionSell(BaseModel):
@@ -23,6 +27,32 @@ class PositionSellResponse(BaseModel):
     currency: str
 
 router = APIRouter()
+
+
+def _latest_fx_rate(db: Session, from_ccy: str, to_ccy: str) -> float:
+    """Latest FX rate with inverse fallback. Fetches live from Yahoo Finance if not in DB."""
+    f, t = from_ccy.upper(), to_ccy.upper()
+    if f == t:
+        return 1.0
+    row = (db.query(FxRate.rate)
+           .filter(FxRate.pair == f"{f}/{t}")
+           .order_by(FxRate.timestamp.desc())
+           .first())
+    if row:
+        return row[0]
+    row_inv = (db.query(FxRate.rate)
+               .filter(FxRate.pair == f"{t}/{f}")
+               .order_by(FxRate.timestamp.desc())
+               .first())
+    if row_inv and row_inv[0]:
+        return 1.0 / row_inv[0]
+
+    # Not in DB — fetch live and cache it
+    rate = fetch_fx_rate(f, t)
+    if rate:
+        db.add(FxRate(pair=f"{f}/{t}", rate=rate, timestamp=datetime.utcnow()))
+        return rate
+    return 1.0
 
 
 def _validate_position(payload_dict: dict):
@@ -65,14 +95,15 @@ def create_position(payload: PositionCreate, db: Session = Depends(get_db)):
     position = Position(**payload_dict)
     db.add(position)
 
-    # Auto-create a corresponding cash withdrawal for Equity/GIC purchases
+    # Auto-create cash withdrawal in account currency, FX-converted from stock currency.
     if payload.category in (CategoryEnum.Equity, CategoryEnum.GIC) and payload.quantity > 0:
-        total_cost = payload.quantity * payload.cost_per_share
+        total_cost_stock = payload.quantity * payload.cost_per_share
+        fx = _latest_fx_rate(db, payload.currency, account.base_currency)
         cash_withdrawal = Position(
             account_id=payload.account_id,
             symbol="CASH",
             category=CategoryEnum.Cash,
-            quantity=-total_cost,
+            quantity=-(total_cost_stock * fx),
             cost_per_share=1.0,
             currency=account.base_currency,
             date_added=payload.date_added,
@@ -143,19 +174,45 @@ def sell_position(position_id: int, payload: PositionSell, db: Session = Depends
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    net_cash = payload.quantity * payload.price - payload.fee
+    net_cash_stock = payload.quantity * payload.price - payload.fee
 
-    # Create cash deposit for net proceeds
+    # Deposit cash proceeds in account currency, FX-converted from stock currency.
+    fx = _latest_fx_rate(db, position.currency, account.base_currency)
+    net_cash_account = net_cash_stock * fx
     cash_deposit = Position(
         account_id=position.account_id,
         symbol="CASH",
         category=CategoryEnum.Cash,
-        quantity=net_cash,
+        quantity=net_cash_account,
         cost_per_share=1.0,
         currency=account.base_currency,
         date_added=payload.date,
     )
     db.add(cash_deposit)
+
+    # Record realized PnL for the sell transaction.
+    reporting_currency = os.getenv("REPORTING_CURRENCY", "CAD")
+    fx_account_to_reporting = _latest_fx_rate(db, account.base_currency, reporting_currency)
+    realized_pnl_stock = payload.quantity * payload.price - payload.fee - payload.quantity * position.cost_per_share
+    realized_pnl_account = realized_pnl_stock * fx
+    db.add(SellTransaction(
+        account_id=position.account_id,
+        account_name=account.name,
+        symbol=position.symbol,
+        category=position.category,
+        quantity=payload.quantity,
+        sell_price=payload.price,
+        cost_per_share=position.cost_per_share,
+        fee=payload.fee,
+        date=payload.date,
+        stock_currency=position.currency,
+        account_currency=account.base_currency,
+        realized_pnl_stock=realized_pnl_stock,
+        realized_pnl_account=realized_pnl_account,
+        realized_pnl_reporting=realized_pnl_account * fx_account_to_reporting,
+        fx_stock_to_account=fx,
+        fx_account_to_reporting=fx_account_to_reporting,
+    ))
 
     remaining = position.quantity - payload.quantity
     if remaining <= 0:
@@ -170,6 +227,6 @@ def sell_position(position_id: int, payload: PositionSell, db: Session = Depends
     return PositionSellResponse(
         position_id=result_id,
         remaining_quantity=remaining,
-        net_cash=net_cash,
+        net_cash=net_cash_account,
         currency=account.base_currency,
     )

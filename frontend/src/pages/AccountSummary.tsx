@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { api, type EnrichedPosition, type SummaryOut } from "../api/client";
+import { api, type EnrichedPosition, type SummaryOut, type RealizedPnLOut } from "../api/client";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -29,9 +29,10 @@ interface AccountBlock {
   symbols: SymbolRow[];
   total_mtm: number;
   total_pnl: number;
+  realized_pnl: number;
 }
 
-function groupPositions(positions: EnrichedPosition[]): AccountBlock[] {
+function groupPositions(positions: EnrichedPosition[], realizedByAccount: Map<number, number>): AccountBlock[] {
   const byAccount = new Map<number, EnrichedPosition[]>();
   for (const p of positions) {
     const list = byAccount.get(p.account_id) ?? [];
@@ -83,6 +84,7 @@ function groupPositions(positions: EnrichedPosition[]): AccountBlock[] {
       symbols,
       total_mtm,
       total_pnl,
+      realized_pnl: realizedByAccount.get(account_id) ?? 0,
     });
   }
 
@@ -105,9 +107,21 @@ function AccountCard({ block, currency }: { block: AccountBlock; currency: strin
             <div className="text-white font-mono font-semibold">{fmt(block.total_mtm)}</div>
           </div>
           <div className="text-right">
-            <div className="text-gray-400">PnL</div>
+            <div className="text-gray-400">Unrealized PnL</div>
             <div className={`font-mono font-semibold ${block.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
               {block.total_pnl >= 0 ? "+" : ""}{fmt(block.total_pnl)}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-gray-400">Realized PnL</div>
+            <div className={`font-mono font-semibold ${block.realized_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+              {block.realized_pnl >= 0 ? "+" : ""}{fmt(block.realized_pnl)}
+            </div>
+          </div>
+          <div className="text-right border-l border-gray-600 pl-4">
+            <div className="text-gray-400">Total PnL</div>
+            <div className={`font-mono font-semibold ${(block.total_pnl + block.realized_pnl) >= 0 ? "text-green-400" : "text-red-400"}`}>
+              {(block.total_pnl + block.realized_pnl) >= 0 ? "+" : ""}{fmt(block.total_pnl + block.realized_pnl)}
             </div>
           </div>
         </div>
@@ -216,14 +230,19 @@ function AccountCard({ block, currency }: { block: AccountBlock; currency: strin
 
 export function AccountSummary() {
   const [data, setData] = useState<SummaryOut | null>(null);
+  const [realizedData, setRealizedData] = useState<RealizedPnLOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     (async () => {
       try {
-        const resp = await api.getSummary("symbol");
-        setData(resp);
+        const [summaryResp, realizedResp] = await Promise.all([
+          api.getSummary("symbol"),
+          api.getRealizedPnL(),
+        ]);
+        setData(summaryResp);
+        setRealizedData(realizedResp);
         setError("");
       } catch {
         setError("Failed to load summary — is the backend running?");
@@ -233,7 +252,13 @@ export function AccountSummary() {
     })();
   }, []);
 
-  const blocks = data ? groupPositions(data.positions) : [];
+  const realizedByAccount = new Map<number, number>();
+  for (const tx of realizedData?.transactions ?? []) {
+    realizedByAccount.set(tx.account_id, (realizedByAccount.get(tx.account_id) ?? 0) + tx.realized_pnl_reporting);
+  }
+  const totalRealized = realizedData?.total_realized_pnl_reporting ?? 0;
+
+  const blocks = data ? groupPositions(data.positions, realizedByAccount) : [];
   const currency = data?.reporting_currency ?? "CAD";
 
   return (
@@ -247,9 +272,21 @@ export function AccountSummary() {
               <div className="text-white font-semibold text-lg">{fmt(data.total_mtm_reporting)}</div>
             </div>
             <div className="text-right">
-              <div className="text-gray-400">Total PnL ({currency})</div>
+              <div className="text-gray-400">Unrealized PnL ({currency})</div>
               <div className={`font-semibold text-lg ${data.total_pnl_reporting >= 0 ? "text-green-400" : "text-red-400"}`}>
                 {data.total_pnl_reporting >= 0 ? "+" : ""}{fmt(data.total_pnl_reporting)}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-gray-400">Realized PnL ({currency})</div>
+              <div className={`font-semibold text-lg ${totalRealized >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {totalRealized >= 0 ? "+" : ""}{fmt(totalRealized)}
+              </div>
+            </div>
+            <div className="text-right border-l border-gray-700 pl-6">
+              <div className="text-gray-400">Total PnL ({currency})</div>
+              <div className={`font-semibold text-lg ${(data.total_pnl_reporting + totalRealized) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {(data.total_pnl_reporting + totalRealized) >= 0 ? "+" : ""}{fmt(data.total_pnl_reporting + totalRealized)}
               </div>
             </div>
           </div>

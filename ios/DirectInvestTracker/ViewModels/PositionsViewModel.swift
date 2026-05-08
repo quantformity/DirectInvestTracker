@@ -10,6 +10,8 @@ class PositionsViewModel {
     var errorMessage: String? = nil
 
     private let modelContext: ModelContext
+    var iCloudService: iCloudDatabaseService?
+    var yahoo: YahooFinanceService?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -34,35 +36,38 @@ class PositionsViewModel {
         yieldRate: Double?,
         currency: String
     ) {
-        let position = Position(
-            symbol: symbol.uppercased(),
-            category: category.rawValue,
-            quantity: quantity,
-            costPerShare: costPerShare,
-            dateAdded: dateAdded,
-            yieldRate: yieldRate,
-            currency: currency,
-            account: account
-        )
-        modelContext.insert(position)
-
-        // Auto-create cash withdrawal for Equity/GIC purchases
-        if (category == .equity || category == .gic) && quantity > 0 {
-            let totalCost = quantity * costPerShare
-            let cashWithdrawal = Position(
-                symbol: "CASH",
-                category: Category.cash.rawValue,
-                quantity: -totalCost,
-                costPerShare: 1.0,
+        Task { @MainActor in
+            let position = Position(
+                symbol: symbol.uppercased(),
+                category: category.rawValue,
+                quantity: quantity,
+                costPerShare: costPerShare,
                 dateAdded: dateAdded,
-                currency: account.baseCurrency,
+                yieldRate: yieldRate,
+                currency: currency,
                 account: account
             )
-            modelContext.insert(cashWithdrawal)
-        }
+            modelContext.insert(position)
 
-        save()
-        fetchPositions(for: account)
+            // Auto-create cash withdrawal in account currency, FX-converted from stock currency.
+            if (category == .equity || category == .gic) && quantity > 0 {
+                let totalCostInStockCcy = quantity * costPerShare
+                let fx = await fxRateEnsured(from: currency, to: account.baseCurrency)
+                let cashWithdrawal = Position(
+                    symbol: "CASH",
+                    category: Category.cash.rawValue,
+                    quantity: -(totalCostInStockCcy * fx),
+                    costPerShare: 1.0,
+                    dateAdded: dateAdded,
+                    currency: account.baseCurrency,
+                    account: account
+                )
+                modelContext.insert(cashWithdrawal)
+            }
+
+            save()
+            fetchPositions(for: account)
+        }
     }
 
     func updatePosition(_ position: Position, symbol: String, category: Category, quantity: Double,
@@ -94,33 +99,95 @@ class PositionsViewModel {
             throw PositionError.insufficientQuantity(held: position.quantity, requested: quantity)
         }
 
-        let netCash = quantity * price - fee
+        // Capture values before the async Task (position may be deleted).
+        let stockCurrency      = position.currency
+        let acctCurrency       = account.baseCurrency
+        let positionSymbol     = position.symbol
+        let positionCategory   = position.category
+        let positionCostBasis  = position.costPerShare
+        let netCashInStockCcy  = quantity * price - fee
+        let remaining          = position.quantity - quantity
 
-        // Deposit cash proceeds
-        let cashDeposit = Position(
-            symbol: "CASH",
-            category: Category.cash.rawValue,
-            quantity: netCash,
-            costPerShare: 1.0,
-            dateAdded: date,
-            currency: account.baseCurrency,
-            account: account
-        )
-        modelContext.insert(cashDeposit)
-
-        let remaining = position.quantity - quantity
         if remaining <= 0 {
             modelContext.delete(position)
         } else {
             position.quantity = remaining
         }
-        save()
-        fetchPositions(for: account)
+
+        Task { @MainActor in
+            let fx = await fxRateEnsured(from: stockCurrency, to: acctCurrency)
+
+            // Deposit cash proceeds in account currency, FX-converted from stock currency.
+            let cashDeposit = Position(
+                symbol: "CASH",
+                category: Category.cash.rawValue,
+                quantity: netCashInStockCcy * fx,
+                costPerShare: 1.0,
+                dateAdded: date,
+                currency: acctCurrency,
+                account: account
+            )
+            modelContext.insert(cashDeposit)
+
+            // Record realized PnL.
+            let reportingCurrency    = AppSettingsStore.reportingCurrency
+            let fxAcctToReporting    = await fxRateEnsured(from: acctCurrency, to: reportingCurrency)
+            let realizedPnlStock     = quantity * price - fee - quantity * positionCostBasis
+            let realizedPnlAccount   = realizedPnlStock * fx
+            let tx = SellTransaction(
+                accountId: account.pythonId ?? -1,
+                accountName: account.name,
+                symbol: positionSymbol,
+                category: positionCategory,
+                quantity: quantity,
+                sellPrice: price,
+                costPerShare: positionCostBasis,
+                fee: fee,
+                date: date,
+                stockCurrency: stockCurrency,
+                accountCurrency: acctCurrency,
+                realizedPnlStock: realizedPnlStock,
+                realizedPnlAccount: realizedPnlAccount,
+                realizedPnlReporting: realizedPnlAccount * fxAcctToReporting,
+                fxStockToAccount: fx,
+                fxAccountToReporting: fxAcctToReporting
+            )
+            modelContext.insert(tx)
+
+            save()
+            fetchPositions(for: account)
+        }
+    }
+
+    /// Returns FX rate from SwiftData, fetching from Yahoo Finance if not cached.
+    private func fxRateEnsured(from: String, to: String) async -> Double {
+        let f = from.uppercased(), t = to.uppercased()
+        if f == t { return 1.0 }
+
+        // Check DB first
+        let rates = (try? modelContext.fetch(FetchDescriptor<FxRate>())) ?? []
+        if let r = rates.filter({ $0.pair == "\(f)/\(t)" }).max(by: { $0.timestamp < $1.timestamp }) {
+            return r.rate
+        }
+        if let r = rates.filter({ $0.pair == "\(t)/\(f)" }).max(by: { $0.timestamp < $1.timestamp }), r.rate != 0 {
+            return 1.0 / r.rate
+        }
+
+        // Not in DB — fetch live from Yahoo Finance
+        guard let yahoo else { return 1.0 }
+        let fetched = try? await yahoo.fetchFxRates(pairs: [(f, t)])
+        if let rate = fetched?["\(f)/\(t)"] {
+            let fxRecord = FxRate(pair: "\(f)/\(t)", rate: rate)
+            modelContext.insert(fxRecord)
+            return rate
+        }
+        return 1.0
     }
 
     private func save() {
         do {
             try modelContext.save()
+            iCloudService?.scheduleExport(context: modelContext)
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -939,7 +939,7 @@ export function Report() {
 
           {/* ── Report Footer ──────────────────────────────────────────────── */}
           <div className="border-t border-gray-200 pt-4 text-xs text-gray-400 text-center">
-            Qf Direct Invest Tracker · {periodLabel} Report · Generated {TODAY}
+            DirectInvest · {periodLabel} Report · Generated {TODAY}
           </div>
 
         </div>

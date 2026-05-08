@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { api, type Account, type Position, type CategoryEnum } from "../api/client";
+import { api, type Account, type Position, type CategoryEnum, type SellTransactionOut } from "../api/client";
 
 const CATEGORIES: CategoryEnum[] = ["Equity", "GIC", "Cash", "Dividend"];
 
@@ -29,9 +29,10 @@ const defaultPositionForm = {
 const defaultAccountForm = { name: "", base_currency: "CAD" };
 
 export function PositionManager() {
-  const [tab, setTab] = useState<"accounts" | "positions" | "transactions">("positions");
+  const [tab, setTab] = useState<"accounts" | "positions" | "cash" | "equity">("positions");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [sellTxs, setSellTxs] = useState<SellTransactionOut[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -94,9 +95,14 @@ export function PositionManager() {
   };
 
   const fetchData = async () => {
-    const [accs, poss] = await Promise.all([api.getAccounts(), api.getPositions()]);
+    const [accs, poss, realized] = await Promise.all([
+      api.getAccounts(),
+      api.getPositions(),
+      api.getRealizedPnL(),
+    ]);
     setAccounts(accs);
     setPositions(poss);
+    setSellTxs(realized.transactions);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -244,21 +250,121 @@ export function PositionManager() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b border-gray-700">
-        {(["positions", "transactions", "accounts"] as const).map((t) => (
+        {([
+          { key: "positions", label: "Positions" },
+          { key: "equity",    label: "Equity Transactions" },
+          { key: "cash",      label: "Cash" },
+          { key: "accounts",  label: "Accounts" },
+        ] as { key: typeof tab; label: string }[]).map(({ key, label }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 -mb-px capitalize text-sm font-medium border-b-2 transition-colors ${
-              tab === t ? "border-blue-500 text-blue-400" : "border-transparent text-gray-400 hover:text-white"
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 transition-colors ${
+              tab === key ? "border-blue-500 text-blue-400" : "border-transparent text-gray-400 hover:text-white"
             }`}
           >
-            {t}
+            {label}
           </button>
         ))}
       </div>
 
-      {/* ── Transactions Tab ── */}
-      {tab === "transactions" && (
+      {/* ── Equity Transactions Tab ── */}
+      {tab === "equity" && (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-300">Equity &amp; GIC Transactions</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-700/50 text-gray-300 uppercase text-xs">
+                <tr>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-left">Symbol</th>
+                  <th className="px-4 py-3 text-left">Category</th>
+                  <th className="px-4 py-3 text-left">Account</th>
+                  <th className="px-4 py-3 text-right">Qty</th>
+                  <th className="px-4 py-3 text-right">Price</th>
+                  <th className="px-4 py-3 text-right">Fee</th>
+                  <th className="px-4 py-3 text-left">CCY</th>
+                  <th className="px-4 py-3 text-right">Realized PnL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {[
+                  ...positions
+                    .filter((p) => p.category === "Equity" || p.category === "GIC")
+                    .map((p) => ({ type: "buy" as const, date: p.date_added, p, tx: null as SellTransactionOut | null })),
+                  ...sellTxs
+                    .map((tx) => ({ type: "sell" as const, date: tx.date, p: null as Position | null, tx })),
+                ]
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((row, i) => {
+                    if (row.type === "buy") {
+                      const p = row.p!;
+                      return (
+                        <tr key={`buy-${p.id}`} className="hover:bg-gray-700/30">
+                          <td className="px-4 py-3 text-gray-400 font-mono text-xs">{p.date_added}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 bg-blue-900/50 text-blue-300 rounded text-xs">Buy</span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-white">{p.symbol}</td>
+                          <td className="px-4 py-3"><CategoryBadge category={p.category} /></td>
+                          <td className="px-4 py-3 text-gray-300">{accountName(p.account_id)}</td>
+                          <td className="px-4 py-3 text-right text-gray-300 font-mono">
+                            {p.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-300 font-mono">
+                            {p.cost_per_share.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-500 font-mono">—</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 bg-purple-900/50 text-purple-300 rounded text-xs">{p.currency ?? "USD"}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-500 font-mono">—</td>
+                        </tr>
+                      );
+                    }
+                    const tx = row.tx!;
+                    return (
+                      <tr key={`sell-${i}`} className="hover:bg-gray-700/30">
+                        <td className="px-4 py-3 text-gray-400 font-mono text-xs">{tx.date}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 bg-amber-900/50 text-amber-300 rounded text-xs">Sell</span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-white">{tx.symbol}</td>
+                        <td className="px-4 py-3"><CategoryBadge category={tx.category as CategoryEnum} /></td>
+                        <td className="px-4 py-3 text-gray-300">{tx.account_name}</td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">
+                          {tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-300 font-mono">
+                          {tx.sell_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-400 font-mono">
+                          {tx.fee > 0 ? tx.fee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 bg-purple-900/50 text-purple-300 rounded text-xs">{tx.stock_currency}</span>
+                        </td>
+                        <td className={`px-4 py-3 text-right font-mono font-medium ${tx.realized_pnl_reporting >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          {tx.realized_pnl_reporting >= 0 ? "+" : ""}
+                          {tx.realized_pnl_reporting.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                {!positions.filter((p) => p.category === "Equity" || p.category === "GIC").length && !sellTxs.length && (
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-500">No equity transactions yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cash Tab ── */}
+      {tab === "cash" && (
         <div className="space-y-6">
           {/* Form */}
           <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
@@ -352,10 +458,10 @@ export function PositionManager() {
             </button>
           </div>
 
-          {/* Recent cash & dividend transactions */}
+          {/* Cash & dividend transactions */}
           <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-300">Recent Cash &amp; Dividend Transactions</h3>
+              <h3 className="text-sm font-semibold text-gray-300">Cash &amp; Dividend Transactions</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -650,7 +756,6 @@ export function PositionManager() {
                             onClose={closeSellPopover}
                             onSubmit={handleSellPosition}
                             loading={loading}
-                            accountCurrency={accounts.find((a) => a.id === p.account_id)?.base_currency ?? p.currency}
                           />
                         )}
                       </td>
@@ -695,7 +800,6 @@ function SellPopover({
   onClose,
   onSubmit,
   loading,
-  accountCurrency,
 }: {
   position: Position;
   form: SellForm;
@@ -703,7 +807,6 @@ function SellPopover({
   onClose: () => void;
   onSubmit: () => void;
   loading: boolean;
-  accountCurrency: string;
 }) {
   const qty = Number(form.quantity) || 0;
   const price = Number(form.price) || 0;
@@ -779,7 +882,7 @@ function SellPopover({
           <span className="font-mono text-red-400">−{fee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className="flex justify-between font-semibold">
-          <span className="text-green-400">Cash Deposit → {accountCurrency}</span>
+          <span className="text-green-400">Cash Deposit ({position.currency})</span>
           <span className="font-mono text-green-400">{net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className={`flex justify-between ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>

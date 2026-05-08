@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: "/positions", label: "Position List", icon: "📊" },
   { to: "/summary", label: "Summary", icon: "📈" },
   { to: "/account-summary", label: "Account Summary", icon: "🏦" },
+  { to: "/realized-pnl", label: "Realized PnL", icon: "💰" },
   { to: "/market", label: "Market Insights", icon: "💹" },
   { to: "/history", label: "History", icon: "📅" },
   { to: "/sector", label: "Sector", icon: "🗂️" },
@@ -206,9 +207,9 @@ export function Layout() {
         {/* Logo */}
         <div className="p-4 border-b border-gray-800 shrink-0">
           <div className="flex flex-col items-center gap-1.5">
-            <img src={quantformityIcon} alt="Direct Invest Tracker" className="w-12 h-12 object-contain" />
+            <img src={quantformityIcon} alt="DirectInvest" className="w-12 h-12 object-contain" />
             <div className="text-white text-xs font-semibold text-center leading-tight">
-              Direct Invest Tracker
+              DirectInvest
             </div>
             <div className="text-gray-500 text-[10px]">v{__APP_VERSION__}</div>
           </div>

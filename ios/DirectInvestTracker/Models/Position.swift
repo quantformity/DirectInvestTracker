@@ -11,6 +11,7 @@ final class Position {
     var dateAdded: Date
     var yieldRate: Double?
     var currency: String
+    var pythonId: Int?
 
     var account: Account?
 

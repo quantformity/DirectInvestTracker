@@ -10,6 +10,7 @@ class AccountsViewModel {
     var errorMessage: String? = nil
 
     private let modelContext: ModelContext
+    var iCloudService: iCloudDatabaseService?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -46,6 +47,7 @@ class AccountsViewModel {
         do {
             try modelContext.save()
             fetchAccounts()
+            iCloudService?.scheduleExport(context: modelContext)
         } catch {
             errorMessage = error.localizedDescription
         }
