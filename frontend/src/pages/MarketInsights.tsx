@@ -103,7 +103,9 @@ function MarketCard({
   sector: string;
 }) {
   const change = data.change_percent ?? 0;
+  const totalShares = positions.reduce((s, p) => s + p.quantity, 0);
   const totalMtm = positions.reduce((s, p) => s + p.mtm_reporting, 0);
+  const totalPnl = positions.reduce((s, p) => s + p.pnl_reporting, 0);
   const eligibleMtm = positions
     .filter((p) => p.date_added !== today)
     .reduce((s, p) => s + p.mtm_reporting, 0);
@@ -141,16 +143,24 @@ function MarketCard({
 
       <div className="grid grid-cols-2 gap-2 text-sm">
         <div>
+          <div className="text-gray-500 text-xs">Shares Held</div>
+          <div className="text-gray-200 font-medium">
+            {totalShares > 0
+              ? totalShares.toLocaleString(undefined, { maximumFractionDigits: 4 })
+              : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-gray-500 text-xs">MTM ({reportingCurrency})</div>
+          <div className="text-gray-200 font-medium">{totalMtm ? `$${fmt(totalMtm)}` : "—"}</div>
+        </div>
+        <div>
           <div className="text-gray-500 text-xs">P/E Ratio</div>
           <div className="text-gray-200">{fmt(data.pe_ratio, 1)}</div>
         </div>
         <div>
           <div className="text-gray-500 text-xs">Beta</div>
           <div className="text-gray-200">{fmt(data.beta, 2)}</div>
-        </div>
-        <div>
-          <div className="text-gray-500 text-xs">MTM ({reportingCurrency})</div>
-          <div className="text-gray-200 font-medium">{totalMtm ? `$${fmt(totalMtm)}` : "—"}</div>
         </div>
         <div>
           <div className="text-gray-500 text-xs">1D PnL ({reportingCurrency})</div>
@@ -161,6 +171,12 @@ function MarketCard({
           ) : (
             <div className="text-gray-500">—</div>
           )}
+        </div>
+        <div>
+          <div className="text-gray-500 text-xs">Total PnL ({reportingCurrency})</div>
+          <div className={`font-semibold ${totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+            {totalPnl >= 0 ? "+" : ""}${fmt(Math.abs(totalPnl))}
+          </div>
         </div>
       </div>
     </div>
@@ -450,7 +466,7 @@ export function MarketInsights() {
 
           {/* ── Market cards ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {marketData.map((md) => (
+            {[...marketData].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((md) => (
               <MarketCard
                 key={md.symbol}
                 data={md}

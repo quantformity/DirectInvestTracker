@@ -23,6 +23,7 @@ private struct SymbolInsight: Identifiable {
     var changePercentSource: String?   // "api", "chart", "derived", or nil
     var peRatio: Double?
     var beta: Double?
+    var totalShares: Double
     var mtmReporting: Double
     var oneDayPnL: Double
     var overallPnL: Double
@@ -304,7 +305,7 @@ struct MarketInsightRootView: View {
                 .padding(.horizontal)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(insights.sorted { $0.mtmReporting > $1.mtmReporting }) { insight in
+                ForEach(insights.sorted { $0.symbol < $1.symbol }) { insight in
                     MarketCardView(insight: insight, currency: currency)
                 }
             }
@@ -355,6 +356,7 @@ struct MarketInsightRootView: View {
         for (symbol, eps) in symGroups {
             let mtm     = eps.reduce(0) { $0 + $1.mtmReporting }
             let pnl     = eps.reduce(0) { $0 + $1.pnlReporting }
+            let shares  = eps.reduce(0) { $0 + $1.quantity }
             let md      = mdMap[symbol]
 
             // 1-Day PnL = (changePercent / 100) × eligibleMTM
@@ -383,6 +385,7 @@ struct MarketInsightRootView: View {
                 changePercentSource: md?.changePercentSource,
                 peRatio: md?.peRatio,
                 beta: md?.beta,
+                totalShares: shares,
                 mtmReporting: mtm,
                 oneDayPnL: oneDayPnL,
                 overallPnL: pnl
@@ -508,12 +511,12 @@ private struct MarketCardView: View {
             Divider()
 
             // Price + change
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 if let price = insight.lastPrice {
                     Text(price.currencyFormatted(currency: "USD", maximumFractionDigits: 2))
-                        .font(.caption.bold())
+                        .font(.title3.bold())
                 } else {
-                    Text("—").font(.caption).foregroundStyle(.secondary)
+                    Text("—").font(.title3).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if let chg = insight.changePercent {
@@ -533,10 +536,14 @@ private struct MarketCardView: View {
 
             // Metrics grid
             Group {
+                metricRow(label: "Shares", value: insight.totalShares > 0
+                    ? insight.totalShares.formatted(.number.precision(.fractionLength(0...4)))
+                    : "—")
+                metricRow(label: "MTM",  value: insight.mtmReporting.currencyFormatted(currency: currency, maximumFractionDigits: 0))
                 metricRow(label: "P/E",  value: insight.peRatio.map { String(format: "%.1f", $0) } ?? "—")
                 metricRow(label: "Beta", value: insight.beta.map { String(format: "%.2f", $0) } ?? "—")
-                metricRow(label: "MTM",  value: insight.mtmReporting.currencyFormatted(currency: currency, maximumFractionDigits: 0))
-                metricRow(label: "Day",  value: dayPnLString)
+                metricRow(label: "Day",  value: dayPnLString, highlight: insight.oneDayPnL >= 0 ? .green : .red)
+                metricRow(label: "PnL",  value: totalPnLString, highlight: insight.overallPnL >= 0 ? .green : .red)
             }
         }
         .padding(12)
@@ -549,14 +556,20 @@ private struct MarketCardView: View {
         return prefix + insight.oneDayPnL.currencyFormatted(currency: currency, maximumFractionDigits: 0)
     }
 
-    private func metricRow(label: String, value: String) -> some View {
+    private var totalPnLString: String {
+        let prefix = insight.overallPnL >= 0 ? "+" : ""
+        return prefix + insight.overallPnL.currencyFormatted(currency: currency, maximumFractionDigits: 0)
+    }
+
+    private func metricRow(label: String, value: String, highlight: Color? = nil) -> some View {
         HStack {
             Text(label)
-                .font(.caption2)
+                .font(.system(size: 9))
                 .foregroundStyle(.secondary)
-                .frame(width: 30, alignment: .leading)
+                .frame(width: 36, alignment: .leading)
             Text(value)
-                .font(.caption2.bold())
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(highlight ?? .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
